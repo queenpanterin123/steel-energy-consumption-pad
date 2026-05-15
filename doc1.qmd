@@ -1,0 +1,76 @@
+---
+title: "steel-energy-consumption-pad"
+author: "queenpanterin2233jol, agens-a"
+format: html
+editor: visual
+---
+
+## Tytuł
+
+------------------------------------------------------------------------
+
+## EDA
+
+------------------------------------------------------------------------
+
+```{r}
+library(corrplot)
+data<-read.csv("steel_data.csv")
+data$Load_Type <- factor(data$Load_Type, levels = c("Light_Load","Medium_Load","Maximum_Load")) #zmiana na factor ze stringa
+#licznosc klas
+table(data$Load_Type) #jest ok
+dane_numeryczne <- data[, sapply(data,is.numeric)]
+
+#robimy korelacje spearmana - nieliniowa i odporna 
+macierz_korelacji_s <- cor(dane_numeryczne, method = "spearman")
+round(macierz_korelacji_s, 2) 
+#wizual korelacji
+corrplot(macierz_korelacji_s,tl.col = "black",tl.cex=0.5,title = "Korelacja Spearmana między predyktorami",mar=c(0,0,2,0))
+```
+
+------------------------------------------------------------------------
+
+```{r}
+#przygotowanie danych treningowych i testowych
+set.seed(238)
+train_index<-sample(1:nrow(data),size=0.7*nrow(data))
+train_data<-data[train_index, ]
+test_data<-data[-train_index, ]
+
+
+
+#analiza glownych skladowych (PCA)
+train_num<-train_data[,sapply(train_data,is.numeric)]
+test_num<-test_data[,sapply(train_data,is.numeric)]
+
+pca_model <- prcomp(train_num, center = TRUE, scale. = TRUE)
+summary(pca_model)
+plot(pca_model, type = "lines", main="Wykres osypiskowy")
+#sprawdzamy czy jest kwadratowa (macierz ladunkow) - OK
+nrow(pca_model$rotation) == ncol(pca_model$rotation)
+
+#zabezpieczamy numerycznie
+#pca_model$rotation %*% t(pca_model$rotation) |> round()
+
+#sprawdzamy czy dane sa ustandaryzowane - sumujemy ich odchylenia standardowe, a powinny wynosic tyle ile jest atrybutow 
+sum(pca_model$sdev^2)
+
+library(factoextra)
+fviz_pca_biplot(pca_model,geom.ind="point",repel=TRUE,legend.title="Poziom ryzyka",title="PCA Biplot - Struktura zbioru treningowego")
+```
+
+Redukcja wymiarow
+
+```{r}
+#watpliwosci mamy co do liczby skladowych 4-nieparzyscie; 5-szum
+liczba_skladowych<-4
+
+train_pca <- data.frame(pca_model$x[,1:liczba_skladowych])
+train_pca$Load_Type <- train_data$Load_Type
+
+test_pca_values <- predict(pca_model, newdata = test_num)
+test_pca <- data.frame(test_pca_values[, 1:liczba_skladowych])
+test_pca$Load_Type <- test_data$Load_Type
+
+
+```
