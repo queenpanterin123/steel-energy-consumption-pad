@@ -18,6 +18,7 @@ library(corrplot)
 data<-read.csv("steel_data.csv")
 data$Load_Type <- factor(data$Load_Type, levels = c("Light_Load","Medium_Load","Maximum_Load")) #zmiana na factor ze stringa
 #licznosc klas
+
 table(data$Load_Type) #jest ok
 dane_numeryczne <- data[, sapply(data,is.numeric)]
 
@@ -29,16 +30,21 @@ corrplot(macierz_korelacji_s,tl.col = "black",tl.cex=0.5,title = "Korelacja Spea
 ```
 
 ------------------------------------------------------------------------
+Przygotowywujemy dane do utworzenia naszych modelii, na początku dzielimy nasze dane na zbiór uczacy i testowy i każdy model będziemy uczyc na tym samym wylosowanym modelu uczącym i testować go na tym samym testowym.
 
+Zdecydowałyśmy się na podzielenie 70% uczący i 30% testowy
 ```{r}
 #przygotowanie danych treningowych i testowych
 library(rsample)
+
 set.seed(238)
-data_split <- initial_split(data, prop = 0.7, strata = Load_Type)
-train_data <- training(data_split)
-test_data <- testing(data_split)
+split_glowny <- initial_split(data, prop = 0.7, strata = Load_Type)
 
-
+train_data <- training(split_glowny) # ZBIÓR UCZĄCY (dla 3 modeli )
+test_data <- testing(split_glowny) # ZBIÓR TESTOWY (dla 3 modeli)
+```
+analizujemy sobie wstępnie ręcznie nasze dane
+```{r}
 
 #analiza glownych skladowych (PCA)
 train_num<-train_data[,sapply(train_data,is.numeric)]
@@ -65,50 +71,42 @@ Redukcja wymiarow
 ```{r}
 #OD ANI: pca zalezy od modelu !!! nie możemy zrobić chyba jednego pca i wtedy pojedyńczo modele
 #watpliwosci mamy co do liczby skladowych 4-nieparzyscie; 5-szum
-liczba_skladowych<-4
+#liczba_skladowych<-4
 
-train_pca <- data.frame(pca_model$x[,1:liczba_skladowych])
-train_pca$Load_Type <- train_data$Load_Type
+#train_pca <- data.frame(pca_model$x[,1:liczba_skladowych])
+#train_pca$Load_Type <- train_data$Load_Type
 
-test_pca_values <- predict(pca_model, newdata = test_num)
-test_pca <- data.frame(test_pca_values[, 1:liczba_skladowych])
-test_pca$Load_Type <- test_data$Load_Type
+#test_pca_values <- predict(pca_model, newdata = test_num)
+#test_pca <- data.frame(test_pca_values[, 1:liczba_skladowych])
+#test_pca$Load_Type <- test_data$Load_Type
 
 
 ```
 
 kNN
 
+Aby zrobić kNN decydujemy się na downsampling zbioru testowego, decyzja ta wynika z tego że algorytm jest wymagający obliczeniowo. Losujemy więc 40% danych z pełnego zbioru treningowego.
+
 ```{r}
 library(ggplot2)
 library(rsample)
 library(tidymodels)
 library(kknn)
-library(dplyr) # Dodajemy pakiet do manipulacji danymi
+library(dplyr)
 
-# 1. Wczytanie i przygotowanie danych
-data <- read.csv("steel_data.csv")
-data$Load_Type <- factor(data$Load_Type, levels = c("Light_Load", "Medium_Load", "Maximum_Load"))
 
-# --- POPRAWKA: Filtrujemy dane ---
-# Zostawiamy wyłącznie kolumny numeryczne oraz zmienną celu (Load_Type).
-# Dzięki temu algorytm kNN nie dostanie tekstów, których nie potrafi przetworzyć.
-data <- data %>% 
-  select(where(is.numeric), Load_Type)
+# 3. DOWNSAMPLING TYLKO DLA kNN
 
-# 2. DOWNSAMPLING 
-set.seed(238)
-data_sampled_split <- initial_split(data, prop = 0.5, strata = Load_Type)
-data_small <- training(data_sampled_split)
+set.seed(123)
+split_knn <- initial_split(train_data, prop = 0.4, strata = Load_Type)
+train_data_knn <- training(split_knn)
 
-# 3. Właściwy podział na zbiór treningowy (70%) i testowy (30%) z mniejszego zbioru
-ostateczny_split <- initial_split(data_small, prop = 0.7, strata = Load_Type)
-train_data <- training(ostateczny_split)
-test_data <- testing(ostateczny_split)
-
+```
+Tworzymy foldy do kroswalidacji na nowym zbiorze treningowym, definiujemy model kNN, definiujemy optymalizacje PCA, tworzymy grid i ostatecznie tuningujemy.
+```{r}
 # 4. Utworzenie foldów do kroswalidacji na nowym zbiorze treningowym
 set.seed(123)
-foldy <- vfold_cv(train_data, v = 5)
+foldy <- vfold_cv(train_data_knn, v = 5)
 
 # 5. Definicja modelu kNN (tunujemy liczbę sąsiadów i funkcję wagową)
 knn_model <- nearest_neighbor(
@@ -120,7 +118,8 @@ knn_model <- nearest_neighbor(
 
 # 6. Recepta z optymalizacją PCA
 # Normalizacja jest kluczowa przed wykonaniem PCA
-knn_pca_recipe <- recipe(Load_Type ~ ., data = train_data) %>%
+knn_pca_recipe <- recipe(Load_Type ~ ., data = train_data_knn) %>%
+  step_rm(all_nominal_predictors()) %>% 
   step_normalize(all_numeric_predictors()) %>%
   step_pca(all_numeric_predictors(), num_comp = tune())
 
@@ -138,7 +137,6 @@ knn_grid <- expand.grid(
 )
 
 # 9. Tuning (Kroswalidacja)
-# Na zmniejszonym zbiorze powinno policzyć się szybko nawet na jednym rdzeniu
 knn_tune_res <- tune_grid(
   knn_workflow,
   resamples = foldy,
@@ -146,7 +144,13 @@ knn_tune_res <- tune_grid(
   metrics = metric_set(accuracy, kap)
 )
 
-# 10. Wizualizacja wyników kroswalidacji (wykres do raportu)
+```
+
+Wizualizacja wyników kroswalidacji
+
+```{r}
+
+# 10. Wizualizacja wyników kroswalidacji
 wykres_knn <- knn_tune_res %>%
   collect_metrics() %>%
   filter(.metric == "accuracy") %>%
@@ -165,37 +169,43 @@ wykres_knn <- knn_tune_res %>%
 
 print(wykres_knn)
 
-# 11. Wyciągnięcie najlepszych parametrów i ostateczny test
-best_knn <- select_best(knn_tune_res, metric = "accuracy")
-print(best_knn) # Pokazuje w konsoli, co wygrało
+```
+Model z normalnym kNN
+Uczenie i testowanie
+```{r}
 
-# Finalizacja workflow najlepszymi parametrami
+# 11. OSTATECZNE UCZENIE I TESTOWANIE
+best_knn <- select_best(knn_tune_res, metric = "accuracy")
 final_knn_wf <- finalize_workflow(knn_workflow, best_knn)
 
-# Uczenie ostatecznego modelu na całym zbiorze treningowym i test na testowym
-final_knn_fit <- last_fit(final_knn_wf, split = ostateczny_split)
+# Ręczne uczenie na małym zbiorze (downsampled) dla kNN
+final_knn_model <- fit(final_knn_wf, data = train_data_knn)
 
-# Wyświetlenie końcowych wyników metryk na nowym zbiorze testowym!
-wyniki_testowe_knn <- collect_metrics(final_knn_fit)
-print(wyniki_testowe_knn)
+# Ręczne testowanie na WSPÓLNYM zbiorze testowym (na którym sprawdzicie też LDA)
+predykcje_knn <- predict(final_knn_model, new_data = test_data) %>% bind_cols(predict(final_knn_model, new_data = test_data, type = "prob")) %>% bind_cols(test_data %>% select(Load_Type))
 
 
 
 ```
-
+Model z normalnym kNN
+Metryki i heatmapa
 ```{r}
-# Wyciągamy predykcje ze zbioru testowego
-predykcje_knn <- collect_predictions(final_knn_fit)
-
-# Generujemy macierz pomyłek
-macierz_knn <- conf_mat(predykcje_knn, truth = Load_Type, estimate = .pred_class)
+# Metryki 
+wyniki_testowe_knn <- predykcje_knn %>%
+  metrics(truth = Load_Type, estimate = .pred_class)
 
 # Zapisujemy metryki kNN na później, dodając kolumnę z nazwą modelu
 podsumowanie_knn <- wyniki_testowe_knn %>%
   select(.metric, .estimate) %>%
-  mutate(model = "kNN + PCA")
+  mutate(model = "kNN (z PCA)")
+print(podsumowanie_knn)
 
-# Rysujemy estetyczny wykres (tzw. heatmapę)
+
+# Generujemy macierz pomyłek
+macierz_knn <- conf_mat(predykcje_knn, truth = Load_Type, estimate = .pred_class)
+
+
+# Rysujemy estetyczny wykres
 autoplot(macierz_knn, type = "heatmap") +
   scale_fill_gradient(low = "#e5f5f9", high = "#2ca25f") +
   theme_linedraw() +
@@ -206,29 +216,39 @@ autoplot(macierz_knn, type = "heatmap") +
 
 
 ```
-
+Model z przekształconym kNN - bufor bezpieczeństwa.
+Zależy nam aby nie było niedoszacowań w zużyciu energii, wolimy ją w predykci trochę zawyżyć niż zaniżyć.
 ```{r}
-# Wyciągamy szczegółowe predykcje z modelu
-predykcje_knn <- collect_predictions(final_knn_fit)
 
-# Zaktualizowana reguła biznesowa: eliminacja skrajnych błędów
 predykcje_bezpieczne_v2 <- predykcje_knn %>%
   mutate(
     pred_biznesowa = case_when(
-      # 1. Jeśli jest przynajmniej 30% szans na Maximum -> od razu zakładamy Maximum
+      # 1. Jeśli jest przynajmniej 30% szans na Maximum to od zakładamy Maximum
       .pred_Maximum_Load >= 0.30 ~ "Maximum_Load",
       
-      # 2. BUFOR BEZPIECZEŃSTWA: 
-      # Jeśli szansa na Maximum jest zauważalna (np. > 10%) LUB szansa na Medium > 35%
-      # przypisujemy Medium_Load. To blokuje wrzucenie obserwacji do Light_Load!
+      # 2. Jeśli szansa na Maximum jest  > 10% LUB szansa na Medium > 35% zakładamy Medium_Load.
       .pred_Maximum_Load >= 0.10 | .pred_Medium_Load >= 0.35 ~ "Medium_Load",
       
-      # 3. Light_Load wybieramy TYLKO wtedy, gdy model jest absolutnie pewny, 
-      # że ryzyko większego obciążenia jest marginalne.
+      # 3. Light_Load wybieramy TYLKO wtedy, gdy, że ryzyko większego obciążenia jest małe.
       TRUE ~ "Light_Load"
     )
   ) %>%
   mutate(pred_biznesowa = factor(pred_biznesowa, levels = levels(Load_Type)))
+```
+Przekształcony model kNN
+Metryki i heatmapa
+```{r}
+
+# Obliczenie metryk dla modelu biznesowego
+wyniki_biznesowe_knn <- predykcje_bezpieczne_v2 %>%
+  metrics(truth = Load_Type, estimate = pred_biznesowa)
+
+print(wyniki_biznesowe_knn)
+
+# Zapisanie wyników do późniejszego zestawienia wszystkich modeli
+podsumowanie_knn_biznesowe <- wyniki_biznesowe_knn %>%
+  select(.metric, .estimate) %>%
+  mutate(model = "kNN (z PCA - Podejście Biznesowe)")
 
 # Generujemy nową macierz pomyłek
 macierz_biznesowa_v2 <- conf_mat(predykcje_bezpieczne_v2, truth = Load_Type, estimate = pred_biznesowa)
@@ -243,3 +263,6 @@ autoplot(macierz_biznesowa_v2, type = "heatmap") +
   )
 
 ```
+```
+Porównując metryki nasze accuracy spadło ale patrzac na heatmape zaniżanie Load spadło więc git, więc to accuracy jest ok - to też nie jest taki duży spadek.
+```{r}
