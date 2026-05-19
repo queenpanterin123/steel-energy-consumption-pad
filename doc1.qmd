@@ -77,7 +77,7 @@ test_pca$Load_Type <- test_data$Load_Type
 
 ```
 
-kNN
+**kNN**
 
 ```{r}
 library(ggplot2)
