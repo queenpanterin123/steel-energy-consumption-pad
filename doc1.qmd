@@ -30,9 +30,11 @@ corrplot(macierz_korelacji_s,tl.col = "black",tl.cex=0.5,title = "Korelacja Spea
 ```
 
 ------------------------------------------------------------------------
+
 Przygotowywujemy dane do utworzenia naszych modelii, na początku dzielimy nasze dane na zbiór uczacy i testowy i każdy model będziemy uczyc na tym samym wylosowanym modelu uczącym i testować go na tym samym testowym.
 
 Zdecydowałyśmy się na podzielenie 70% uczący i 30% testowy
+
 ```{r}
 #przygotowanie danych treningowych i testowych
 library(rsample)
@@ -43,7 +45,9 @@ split_glowny <- initial_split(data, prop = 0.7, strata = Load_Type)
 train_data <- training(split_glowny) # ZBIÓR UCZĄCY (dla 3 modeli )
 test_data <- testing(split_glowny) # ZBIÓR TESTOWY (dla 3 modeli)
 ```
+
 analizujemy sobie wstępnie ręcznie nasze dane
+
 ```{r}
 
 #analiza glownych skladowych (PCA)
@@ -102,7 +106,9 @@ split_knn <- initial_split(train_data, prop = 0.4, strata = Load_Type)
 train_data_knn <- training(split_knn)
 
 ```
+
 Tworzymy foldy do kroswalidacji na nowym zbiorze treningowym, definiujemy model kNN, definiujemy optymalizacje PCA, tworzymy grid i ostatecznie tuningujemy.
+
 ```{r}
 # 4. Utworzenie foldów do kroswalidacji na nowym zbiorze treningowym
 set.seed(123)
@@ -170,8 +176,9 @@ wykres_knn <- knn_tune_res %>%
 print(wykres_knn)
 
 ```
-Model z normalnym kNN
-Uczenie i testowanie
+
+Model z normalnym kNN Uczenie i testowanie
+
 ```{r}
 
 # 11. OSTATECZNE UCZENIE I TESTOWANIE
@@ -187,8 +194,9 @@ predykcje_knn <- predict(final_knn_model, new_data = test_data) %>% bind_cols(pr
 
 
 ```
-Model z normalnym kNN
-Metryki i heatmapa
+
+Model z normalnym kNN Metryki i heatmapa
+
 ```{r}
 # Metryki 
 wyniki_testowe_knn <- predykcje_knn %>%
@@ -216,8 +224,9 @@ autoplot(macierz_knn, type = "heatmap") +
 
 
 ```
-Model z przekształconym kNN - bufor bezpieczeństwa.
-Zależy nam aby nie było niedoszacowań w zużyciu energii, wolimy ją w predykci trochę zawyżyć niż zaniżyć.
+
+Model z przekształconym kNN - bufor bezpieczeństwa. Zależy nam aby nie było niedoszacowań w zużyciu energii, wolimy ją w predykci trochę zawyżyć niż zaniżyć.4
+
 ```{r}
 
 predykcje_bezpieczne_v2 <- predykcje_knn %>%
@@ -235,8 +244,9 @@ predykcje_bezpieczne_v2 <- predykcje_knn %>%
   ) %>%
   mutate(pred_biznesowa = factor(pred_biznesowa, levels = levels(Load_Type)))
 ```
-Przekształcony model kNN
-Metryki i heatmapa
+
+## Przekształcony model kNN Metryki i heatmapa
+
 ```{r}
 
 # Obliczenie metryk dla modelu biznesowego
@@ -263,6 +273,137 @@ autoplot(macierz_biznesowa_v2, type = "heatmap") +
   )
 
 ```
-```
-Porównując metryki nasze accuracy spadło ale patrzac na heatmape zaniżanie Load spadło więc git, więc to accuracy jest ok - to też nie jest taki duży spadek.
+
+`Porównując metryki nasze accuracy spadło ale patrzac na heatmape zaniżanie Load spadło więc git, więc to accuracy jest ok - to też nie jest taki duży spadek.`{r}
+
+## Wielomianowa regresja logistyczna
+
 ```{r}
+library(tidymodels)
+lr_model<-multinom_reg(penalty = tune(), mixture=tune()) %>% 
+  set_engine("glmnet") %>%
+  set_mode("classification") 
+#penalty sprawia, ze sa ustawiane bezpieczne wagi- regularyzacja, my nie musimy wybierac bo uzywamy tune()
+#mixture - kara dla wag , lasso zeruje wagi slabych zmiennych, ridge sciaga do zera, uzywamy tune() wiec nie musimy wybierac - mamy wiec Elastic Net, bo czerpie model z obu kar korzysci
+#set_engine z glmnet biblioteka w R ktora bardzo sprawnie wylicza z lesso i ridge
+
+lr_recipe <- recipe(Load_Type ~ ., data = train_data) %>% 
+  step_rm(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_pca(all_numeric_predictors(), num_comp = tune())
+#usuwamy zmienne tekstowe; normalizujemy numerowe; pca, ale pozwalamy przez tune() wybrac ile skladowych dla lepszego accuracy
+
+lr_workflow <- workflow() %>%
+  add_model(lr_model) %>%
+  add_recipe(lr_recipe)
+#laczenie modelu i recepty w jeden obiekt, czyli workflow pipeline zrobiony 
+
+set.seed(257)
+foldy_pelne <- vfold_cv(train_data, v = 5)
+lr_grid <- grid_regular(penalty(), mixture(), num_comp(range = c(3, 5)), levels = 3)
+#grid hiperparametrow
+
+lr_tune_res <- tune_grid(
+  lr_workflow,
+  resamples = foldy_pelne,
+  grid = lr_grid,
+  metrics = metric_set(accuracy, kap)
+)
+#sprawdzanie na naszym lr_grid, lr_workflow, foldach ktora kombinacja bedzie najleosza; uzywam tez metryki kappa, zeby sprawdzic czy dokladnosc sama jest ok, czy model jest do uzycia wogole
+
+
+best_lr <- select_best(lr_tune_res, metric = "accuracy")
+#wybieramy najlepsza kombinacje parametrow z wielu wielu ktore zrobilismy (ile w PCA skladowych, jaka kara)
+final_lr_wf <- finalize_workflow(lr_workflow, best_lr)
+#juz nie tune tylko twarde parametry wybrane
+final_lr_model <- fit(final_lr_wf, data = train_data)
+#dotychczas model uczyl sie na 80% w celu znalezienia parametrow, teraz dajemy mu clay treningowy set
+
+predykcje_lr <- predict(final_lr_model, new_data = test_data) %>%
+  bind_cols(test_data %>% select(Load_Type))
+
+podsumowanie_lr <- predykcje_lr %>%
+  metrics(truth = Load_Type, estimate = .pred_class) %>%
+  select(.metric, .estimate) %>%
+  mutate(model = "Regresja Logistyczna (z PCA)")
+
+
+print(podsumowanie_lr)
+
+macierz_lr <- conf_mat(predykcje_lr, truth = Load_Type, estimate = .pred_class)
+autoplot(macierz_lr, type = "heatmap") +
+  scale_fill_gradient(low = "#fff5eb", high = "#d94801") + 
+  theme_linedraw() +
+  labs(
+    title = "Macierz pomyłek - Regresja Logistyczna",
+    subtitle = "Zestawienie klas rzeczywistych i przewidywanych"
+  )
+
+```
+
+## LDA
+
+```{r}
+library(discrim)
+lda_model <- discrim_linear() %>%
+  set_engine("MASS") %>%
+  set_mode("classification")
+
+#nie robimy tuningu, bo LDA nie ma hiperparametrow do strojenia!!!
+
+#num_comp 4 na razie tak jak w osypiskowym pokazywalo 98%
+lda_recipe <- recipe(Load_Type ~ ., data = train_data) %>%
+  step_rm(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_pca(all_numeric_predictors(), num_comp = 4)
+#czyli najpierw usuwamy teksty i war nominalne; poozniej normaluzujemy; pozniej rzutujemy pca
+
+
+lda_workflow <- workflow() %>%
+  add_model(lda_model) %>%
+  add_recipe(lda_recipe)
+#bardzo prosty workflow tu jest - tylko model i recepta
+
+final_lda_model <- fit(lda_workflow, data = train_data)
+
+
+predykcje_lda <- predict(final_lda_model, new_data = test_data) %>%
+  bind_cols(test_data %>% select(Load_Type))
+
+
+
+podsumowanie_lda <- predykcje_lda %>%
+  metrics(truth = Load_Type, estimate = .pred_class) %>%
+  select(.metric, .estimate) %>%
+  mutate(model = "LDA (z PCA)")
+
+print(podsumowanie_lda)
+```
+
+Pods
+
+```{r}
+zestawienie <- bind_rows(
+  podsumowanie_knn,
+  podsumowanie_knn_biznesowe,
+  podsumowanie_lr,
+  podsumowanie_lda
+) 
+
+wykres_dane <- zestawienie %>%
+  filter(.metric == "accuracy")
+
+ggplot(wykres_dane, aes(x = reorder(model, .estimate), y = .estimate, fill = model)) +
+  geom_col(color = "black", alpha = 0.8) +
+  geom_text(aes(label = scales::percent(.estimate, accuracy = 0.1)),
+            hjust = 1.2, color = "white", fontface = "bold", size = 5) +
+  coord_flip()
+  labs(
+    title = "Ostateczne Porównanie Skuteczności Modeli",
+    subtitle = "Dokładność (Accuracy) przetestowana na odizolowanym zbiorze testowym",
+    x = "Wykorzystany Model",
+    y = "Dokładność (Accuracy)"
+  ) 
+
+
+```
