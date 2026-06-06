@@ -26,7 +26,7 @@ dane_numeryczne <- data[, sapply(data,is.numeric)]
 macierz_korelacji_s <- cor(dane_numeryczne, method = "spearman")
 round(macierz_korelacji_s, 2) 
 #wizual korelacji
-corrplot(macierz_korelacji_s,tl.col = "black",tl.cex=0.5,title = "Korelacja Spearmana między predyktorami",mar=c(0,0,2,0))
+corrplot(macierz_korelacji_s,tl.col = "black",order= "hclust",tl.cex=0.5,title = "Korelacja Spearmana między predyktorami",mar=c(0,0,2,0))
 ```
 
 ------------------------------------------------------------------------
@@ -67,24 +67,17 @@ nrow(pca_model$rotation) == ncol(pca_model$rotation)
 sum(pca_model$sdev^2)
 
 library(factoextra)
-fviz_pca_biplot(pca_model,geom.ind="point",repel=TRUE,legend.title="Poziom ryzyka",title="PCA Biplot - Struktura zbioru treningowego")
-```
 
-Redukcja wymiarow
-
-```{r}
-#OD ANI: pca zalezy od modelu !!! nie możemy zrobić chyba jednego pca i wtedy pojedyńczo modele
-#watpliwosci mamy co do liczby skladowych 4-nieparzyscie; 5-szum
-#liczba_skladowych<-4
-
-#train_pca <- data.frame(pca_model$x[,1:liczba_skladowych])
-#train_pca$Load_Type <- train_data$Load_Type
-
-#test_pca_values <- predict(pca_model, newdata = test_num)
-#test_pca <- data.frame(test_pca_values[, 1:liczba_skladowych])
-#test_pca$Load_Type <- test_data$Load_Type
-
-
+fviz_pca_biplot(pca_model,
+                geom.ind = "point",
+                col.ind = train_data$Load_Type,
+                col.var = "#3E3E3E",
+                pointshape = 19,
+                palette = "Set2",               
+                alpha.ind = 0.7,
+                repel = TRUE,
+                legend.title = "Typ obciążenia", 
+                title = "PCA Biplot - Struktura zbioru treningowego")
 ```
 
 **kNN**
@@ -92,6 +85,7 @@ Redukcja wymiarow
 Aby zrobić kNN decydujemy się na downsampling zbioru testowego, decyzja ta wynika z tego że algorytm jest wymagający obliczeniowo. Losujemy więc 40% danych z pełnego zbioru treningowego.
 
 ```{r}
+
 library(ggplot2)
 library(rsample)
 library(tidymodels)
@@ -99,7 +93,7 @@ library(kknn)
 library(dplyr)
 
 
-# 3. DOWNSAMPLING TYLKO DLA kNN
+# DOWNSAMPLING TYLKO DLA kNN
 
 set.seed(123)
 split_knn <- initial_split(train_data, prop = 0.4, strata = Load_Type)
@@ -112,11 +106,11 @@ Tworzymy foldy do kroswalidacji na nowym zbiorze treningowym, definiujemy model 
 **dodaje dummy variables na dni tygodnia i status weekendu; jeszcze nie wiem czy oba sa potrzebne - ratuje nas jednak przed tym pca i lasso pozniej; jednak nie ma duzych roznic miedzy dniami w srodku tygodnia (mogloby sie okazac ze w poniedzialki czesto jest maximum load ale tak nie jest wiec spoko mozna zostawic tylko WeekStatus**
 
 ```{r}
-# 4. Utworzenie foldów do kroswalidacji na nowym zbiorze treningowym
+# Utworzenie foldów do kroswalidacji na nowym zbiorze treningowym
 set.seed(123)
 foldy <- vfold_cv(train_data_knn, v = 5)
 
-# 5. Definicja modelu kNN (tunujemy liczbę sąsiadów i funkcję wagową)
+# Definicja modelu kNN (tunujemy liczbę sąsiadów i funkcję wagową)
 knn_model <- nearest_neighbor(
   neighbors = tune(),
   weight_func = tune()
@@ -124,21 +118,21 @@ knn_model <- nearest_neighbor(
   set_engine("kknn") %>%
   set_mode("classification")
 
-# 6. Recepta z optymalizacją PCA
-# Normalizacja jest kluczowa przed wykonaniem PCA
+# Recepta z optymalizacją PCA
+# Normalizacja przed PCA
 knn_pca_recipe <- recipe(Load_Type ~ ., data = train_data_knn) %>%
   step_rm(Day_of_week)%>%
   step_dummy(all_nominal_predictors()) %>%  
   step_normalize(all_numeric_predictors()) %>%
   step_pca(all_numeric_predictors(), num_comp = tune())
 
-# 7. Połączenie modelu i recepty w Workflow
+# Połączenie modelu i recepty w Workflow
 knn_workflow <- workflow() %>%
   add_model(knn_model) %>%
   add_recipe(knn_pca_recipe)
 
-# 8. Siatka hiperparametrów (Grid)
-# Sprawdzamy bezpieczny zakres, który nie wysadzi pamięci RAM
+# Siatka hiperparametrów (Grid)
+# Sprawdzamy bezpieczny zakres (bo pamięc RAM)
 knn_grid <- expand.grid(
   neighbors = c(3, 5, 7, 9, 11, 13),
   weight_func = c("rectangular", "gaussian"),
@@ -159,7 +153,7 @@ Wizualizacja wyników kroswalidacji
 
 ```{r}
 
-# 10. Wizualizacja wyników kroswalidacji
+# Wizualizacja wyników kroswalidacji
 wykres_knn <- knn_tune_res %>%
   collect_metrics() %>%
   filter(.metric == "accuracy") %>%
@@ -170,9 +164,9 @@ wykres_knn <- knn_tune_res %>%
   theme_linedraw() +
   theme(legend.position = "bottom") +
   labs(
-    title = "Optymalizacja modelu kNN połączona z PCA",
+    title = "Optymalizacja modelu kNN z PCA",
     x = "Liczba sąsiadów (k)",
-    y = "Dokładność (Accuracy)",
+    y = "Accuracy",
     color = "Liczba składowych PCA:"
   )
 
@@ -184,14 +178,14 @@ Model z normalnym kNN Uczenie i testowanie
 
 ```{r}
 
-# 11. OSTATECZNE UCZENIE I TESTOWANIE
+# OSTATECZNE UCZENIE I TESTOWANIE
 best_knn <- select_best(knn_tune_res, metric = "accuracy")
 final_knn_wf <- finalize_workflow(knn_workflow, best_knn)
 
 # Ręczne uczenie na małym zbiorze (downsampled) dla kNN
 final_knn_model <- fit(final_knn_wf, data = train_data_knn)
 
-# Ręczne testowanie na WSPÓLNYM zbiorze testowym (na którym sprawdzicie też LDA)
+# Ręczne testowanie na WSPÓLNYM zbiorze testowym (na którym sprawdzamy też inne modele)
 predykcje_knn <- predict(final_knn_model, new_data = test_data) %>% bind_cols(predict(final_knn_model, new_data = test_data, type = "prob")) %>% bind_cols(test_data %>% select(Load_Type))
 
 
@@ -205,81 +199,42 @@ Model z normalnym kNN Metryki i heatmapa
 wyniki_testowe_knn <- predykcje_knn %>%
   metrics(truth = Load_Type, estimate = .pred_class)
 
-# Zapisujemy metryki kNN na później, dodając kolumnę z nazwą modelu
+# Zapisujemy metryki kNN na później
 podsumowanie_knn <- wyniki_testowe_knn %>%
   select(.metric, .estimate) %>%
   mutate(model = "kNN (z PCA)")
 print(podsumowanie_knn)
 
 
-# Generujemy macierz pomyłek
-macierz_knn <- conf_mat(predykcje_knn, truth = Load_Type, estimate = .pred_class)
+# wykres heatmapa
+dane_macierzy <- as.data.frame(macierz_knn$table)
 
+dane_macierzy <- dane_macierzy %>%
+  group_by(Truth) %>%
+  mutate(Procent = Freq / sum(Freq) * 100) %>%
+  ungroup()
 
-# Rysujemy estetyczny wykres
-autoplot(macierz_knn, type = "heatmap") +
+ggplot(dane_macierzy, aes(x = Truth, y = Prediction, fill = Freq)) +
+  geom_tile(color = "white") + 
+  # Poniższa linijka odpowiada za wstawienie liczby i procenta pod spodem
+  geom_text(aes(label = sprintf("%d\n(%.1f%%)", Freq, Procent)), size = 4) +
   scale_fill_gradient(low = "#e5f5f9", high = "#2ca25f") +
   theme_linedraw() +
   labs(
     title = "Macierz pomyłek - Model kNN",
-    subtitle = "Zestawienie klas rzeczywistych i przewidywanych"
+    subtitle = "Zestawienie klas rzeczywistych i przewidywanych",
+    fill = "Liczność"
+  ) +
+  theme(
+    panel.grid = element_blank(), # Wyłącza kratkę w tle kafelków dla lepszej czytelności
+    axis.text.x = element_text(angle = 0, hjust = 0.5)
   )
 
 
 ```
 
-Model z przekształconym kNN - bufor bezpieczeństwa. Zależy nam aby nie było niedoszacowań w zużyciu energii, wolimy ją w predykci trochę zawyżyć niż zaniżyć.4
 
-```{r}
-
-predykcje_bezpieczne_v2 <- predykcje_knn %>%
-  mutate(
-    pred_biznesowa = case_when(
-      # 1. Jeśli jest przynajmniej 30% szans na Maximum to od zakładamy Maximum
-      .pred_Maximum_Load >= 0.30 ~ "Maximum_Load",
-      
-      # 2. Jeśli szansa na Maximum jest  > 10% LUB szansa na Medium > 35% zakładamy Medium_Load.
-      .pred_Maximum_Load >= 0.10 | .pred_Medium_Load >= 0.35 ~ "Medium_Load",
-      
-      # 3. Light_Load wybieramy TYLKO wtedy, gdy, że ryzyko większego obciążenia jest małe.
-      TRUE ~ "Light_Load"
-    )
-  ) %>%
-  mutate(pred_biznesowa = factor(pred_biznesowa, levels = levels(Load_Type)))
-```
-
-## Przekształcony model kNN Metryki i heatmapa
-
-```{r}
-
-# Obliczenie metryk dla modelu biznesowego
-wyniki_biznesowe_knn <- predykcje_bezpieczne_v2 %>%
-  metrics(truth = Load_Type, estimate = pred_biznesowa)
-
-print(wyniki_biznesowe_knn)
-
-# Zapisanie wyników do późniejszego zestawienia wszystkich modeli
-podsumowanie_knn_biznesowe <- wyniki_biznesowe_knn %>%
-  select(.metric, .estimate) %>%
-  mutate(modegit l = "kNN (z PCA - Podejście Biznesowe)")
-
-# Generujemy nową macierz pomyłek
-macierz_biznesowa_v2 <- conf_mat(predykcje_bezpieczne_v2, truth = Load_Type, estimate = pred_biznesowa)
-
-# Rysujemy
-autoplot(macierz_biznesowa_v2, type = "heatmap") +
-  scale_fill_gradient(low = "#f2f0f7", high = "#54278f") +
-  theme_linedraw() +
-  labs(
-    title = "Biznesowa Macierz Pomyłek - kNN (Wersja 2.0)",
-    subtitle = "Zabezpieczenie przed skrajnym niedoszacowaniem obciążenia"
-  )
-
-```
-
-`Porównując metryki nasze accuracy spadło ale patrzac na heatmape zaniżanie Load spadło więc git, więc to accuracy jest ok - to też nie jest taki duży spadek.`{r}
-
-## Wielomianowa regresja logistyczna
+**Wielomianowa regresja logistyczna**
 
 ```{r}
 library(tidymodels)
@@ -317,8 +272,10 @@ lr_tune_res <- tune_grid(
 
 
 best_lr <- select_best(lr_tune_res, metric = "accuracy")
+
 #wybieramy najlepsza kombinacje parametrow z wielu wielu ktore zrobilismy (ile w PCA skladowych, jaka kara)
 final_lr_wf <- finalize_workflow(lr_workflow, best_lr)
+
 #juz nie tune tylko twarde parametry wybrane
 final_lr_model <- fit(final_lr_wf, data = train_data)
 #dotychczas model uczyl sie na 80% w celu znalezienia parametrow, teraz dajemy mu clay treningowy set
@@ -334,18 +291,31 @@ podsumowanie_lr <- predykcje_lr %>%
 
 print(podsumowanie_lr)
 
+#wykres
 macierz_lr <- conf_mat(predykcje_lr, truth = Load_Type, estimate = .pred_class)
-autoplot(macierz_lr, type = "heatmap") +
+
+
+dane_macierzy_lr <- as.data.frame(macierz_lr$table) %>%
+  group_by(Truth) %>%
+  mutate(Procent = Freq / sum(Freq) * 100) %>%
+  ungroup()
+
+ggplot(dane_macierzy_lr, aes(x = Truth, y = Prediction, fill = Freq)) +
+  geom_tile(color = "white") + 
+  geom_text(aes(label = sprintf("%d\n(%.1f%%)", Freq, Procent)), size = 4) +
   scale_fill_gradient(low = "#fff5eb", high = "#d94801") + 
   theme_linedraw() +
   labs(
     title = "Macierz pomyłek - Regresja Logistyczna",
-    subtitle = "Zestawienie klas rzeczywistych i przewidywanych"
-  )
+    subtitle = "Zestawienie klas rzeczywistych i przewidywanych",
+    fill = "Liczność"
+  ) +
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, hjust = 0.5))
 
 ```
 
-## LDA
+
+**LDA**
 
 ```{r}
 library(discrim)
@@ -383,6 +353,26 @@ podsumowanie_lda <- predykcje_lda %>%
   mutate(model = "LDA (z PCA)")
 
 print(podsumowanie_lda)
+
+#wykres
+macierz_lda <- conf_mat(predykcje_lda, truth = Load_Type, estimate = .pred_class)
+
+dane_macierzy_lda <- as.data.frame(macierz_lda$table) %>%
+  group_by(Truth) %>%
+  mutate(Procent = Freq / sum(Freq) * 100) %>%
+  ungroup()
+
+ggplot(dane_macierzy_lda, aes(x = Truth, y = Prediction, fill = Freq)) +
+  geom_tile(color = "white") + 
+  geom_text(aes(label = sprintf("%d\n(%.1f%%)", Freq, Procent)), size = 4) +
+  scale_fill_gradient(low = "#eff3ff", high = "#08519c") + # Odcienie niebieskiego
+  theme_linedraw() +
+  labs(
+    title = "Macierz pomyłek - LDA",
+    subtitle = "Zestawienie klas rzeczywistych i przewidywanych",
+    fill = "Liczność"
+  ) +
+  theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, hjust = 0.5))
 ```
 
 Pods
@@ -390,7 +380,6 @@ Pods
 ```{r}
 zestawienie <- bind_rows(
   podsumowanie_knn,
-  podsumowanie_knn_biznesowe,
   podsumowanie_lr,
   podsumowanie_lda
 ) 
