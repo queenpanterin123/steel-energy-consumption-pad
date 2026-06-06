@@ -5,35 +5,43 @@ format: html
 editor: visual
 ---
 
+
+
 ## Tytuł
 **Analiza i Predykcje Zużycia Energii w Hucie Stali**
-Celem naszego projektu jest zbudowanie zoptymalizowanych modeli klasyfikacyjnych potrafiących przewidzieć typ obciążenia energetycznego "Load_Type" w hucie stali.
-Właściwa predykcja zużycia energii jest kluczowa dla optymalizacji kosztów oraz zapobiegania awariom sieci przemysłowej. W ramach analizy wykorzystałyśmy techniki uczenia maszynowego w ekosystemie `tidymodels`, kładąc szczególny nacisk na inżynierię cech (Feature Engineering), zapobieganie wyciekowi danych (Data Leakage) oraz redukcję wymiarowości za pomocą algorytmu PCA.
 ------------------------------------------------------------------------
 
 ## EDA
 
 ------------------------------------------------------------------------
 
+
+
 ```{r}
 library(corrplot)
 data<-read.csv("steel_data.csv")
-#Konwersja zmiennej objaśnianej do typu kategorycznego (factor)
-data$Load_Type <- factor(data$Load_Type, levels = c("Light_Load","Medium_Load","Maximum_Load"))
+data$Load_Type <- factor(data$Load_Type, levels = c("Light_Load","Medium_Load","Maximum_Load")) #zmiana na factor ze stringa
+#licznosc klas
 
 table(data$Load_Type) #jest ok
 dane_numeryczne <- data[, sapply(data,is.numeric)]
 
+#robimy korelacje spearmana - nieliniowa i odporna 
 macierz_korelacji_s <- cor(dane_numeryczne, method = "spearman")
 round(macierz_korelacji_s, 2) 
+#wizual korelacji
 corrplot(macierz_korelacji_s,tl.col = "black",order= "hclust",tl.cex=0.5,title = "Korelacja Spearmana między predyktorami",mar=c(0,0,2,0))
 ```
+
+
 
 ------------------------------------------------------------------------
 
 Przygotowywujemy dane do utworzenia naszych modeli, na początku dzielimy nasze dane na zbiór uczacy i testowy i każdy model będziemy uczyc na tym samym wylosowanym modelu uczącym i testować go na tym samym testowym.
 
 Zdecydowałyśmy się na podzielenie 70% uczący i 30% testowy.
+
+
 
 ```{r}
 #przygotowanie danych treningowych i testowych
@@ -46,7 +54,11 @@ train_data <- training(split_glowny) # ZBIÓR UCZĄCY (dla 3 modeli )
 test_data <- testing(split_glowny) # ZBIÓR TESTOWY (dla 3 modeli)
 ```
 
+
+
 Analizujemy wstępnie ręcznie nasze dane.
+
+
 
 ```{r}
 
@@ -80,9 +92,13 @@ fviz_pca_biplot(pca_model,
                 title = "PCA Biplot - Struktura zbioru treningowego")
 ```
 
+
+
 **kNN**
 
 Aby zrobić kNN decydujemy się na downsampling zbioru testowego, decyzja ta wynika z tego że algorytm jest wymagający obliczeniowo. Losujemy więc 40% danych z pełnego zbioru treningowego.
+
+
 
 ```{r}
 
@@ -101,9 +117,13 @@ train_data_knn <- training(split_knn)
 
 ```
 
+
+
 Tworzymy foldy do kroswalidacji na nowym zbiorze treningowym, definiujemy model kNN, definiujemy optymalizacje PCA, tworzymy grid i ostatecznie tuningujemy.
 
 **dodaje dummy variables na dni tygodnia i status weekendu; jeszcze nie wiem czy oba sa potrzebne - ratuje nas jednak przed tym pca i lasso pozniej; jednak nie ma duzych roznic miedzy dniami w srodku tygodnia (mogloby sie okazac ze w poniedzialki czesto jest maximum load ale tak nie jest wiec spoko mozna zostawic tylko WeekStatus**
+
+
 
 ```{r}
 # Utworzenie foldów do kroswalidacji na nowym zbiorze treningowym
@@ -149,7 +169,11 @@ knn_tune_res <- tune_grid(
 
 ```
 
+
+
 Wizualizacja wyników kroswalidacji
+
+
 
 ```{r}
 
@@ -174,7 +198,11 @@ print(wykres_knn)
 
 ```
 
+
+
 Model z normalnym kNN Uczenie i testowanie
+
+
 
 ```{r}
 
@@ -192,7 +220,11 @@ predykcje_knn <- predict(final_knn_model, new_data = test_data) %>% bind_cols(pr
 
 ```
 
+
+
 Model z normalnym kNN Metryki i heatmapa
+
+
 
 ```{r}
 # Metryki 
@@ -234,7 +266,11 @@ ggplot(dane_macierzy, aes(x = Truth, y = Prediction, fill = Freq)) +
 ```
 
 
+
+
 **Wielomianowa regresja logistyczna**
+
+
 
 ```{r}
 library(tidymodels)
@@ -315,7 +351,11 @@ ggplot(dane_macierzy_lr, aes(x = Truth, y = Prediction, fill = Freq)) +
 ```
 
 
+
+
 **LDA**
+
+
 
 ```{r}
 library(discrim)
@@ -375,7 +415,11 @@ ggplot(dane_macierzy_lda, aes(x = Truth, y = Prediction, fill = Freq)) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, hjust = 0.5))
 ```
 
+
+
 Pods
+
+
 
 ```{r}
 zestawienie <- bind_rows(
@@ -401,3 +445,4 @@ ggplot(wykres_dane, aes(x = reorder(model, .estimate), y = .estimate, fill = mod
 
 
 ```
+
