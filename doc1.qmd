@@ -26,7 +26,7 @@ library(factoextra)
 
 ```
 
-## EDA
+## 1. EDA
 
 W pierwszej fazie projektu dokonalysmy wczytania danych, sprawdzilysmy zbilansowanie klas oraz wstępnie przeanalizowałyśmy wzajemne zależności. Zmienna celu "Load Type" została przekształcona na typ kategoryczny uporządkowany. Ponadto, ze względu na specyfikę danych z czujników przemysłowych, do zbadania współzależności wykorzystano korelację rang Spearmana, która w przeciwieństwie do korelacji Pearsona jest odporna na relacje nieliniowe oraz wartości odstające (outliery).
 
@@ -62,12 +62,22 @@ ggplot(data, aes(x = Load_Type, fill = Load_Type)) +
     x = "Typ obciążenia",
     y = "Liczba obserwacji"
   )
-
+```
+Intrepretacja balansu klas: Wykres wskazuje na asymetrię rozkładu, gdzie klasa Light_Load przeważa nad innymi klasam. W obliczu tego niezrównoważonego rozkładu, w procesie modelowania zastosowałyśmy stratyfikację, cyzli podział, który zachowuje proporcje klas, aby zapobiec faworyzowaniu klasy dominującej.
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
 #macierz korelacji Spearmana
 macierz_korelacji_s <- cor(dane_numeryczne, method = "spearman")
 round(macierz_korelacji_s, 2) 
 corrplot(macierz_korelacji_s,tl.col = "black",order= "hclust",tl.cex=0.5,title = "Korelacja Spearmana między predyktorami",mar=c(0,0,2,0))
-
+```
+Interoretacja macierzy korelacji Spearmana: Macierz korelacji ujawnia silne powiązania między predyktorami, co sugeruje występowanie zjawiska wspólliniowości. Ze względu na nieliniowy charakter tych zależności wybrałyśmy korelację Spearmana. Aby zreduować redundancjędanych i zwiększyć stabilność modeli, w dalszym etapie zdecydowałyśmy się na zastosowanie analizy głównych składowych.
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
 #wykresy pudełkowe 
 dane_dlugie <- data %>%
   select(where(is.numeric), Load_Type) %>%
@@ -97,7 +107,12 @@ ggplot(dane_dlugie_wybrane, aes(x = Wartosc, y = Load_Type, fill = Load_Type)) +
     x = "Wartość predyktora",
     fill = "Typ obciążenia"
   )
-
+```
+Interpretacja rozkładów zmiennych numerycznych (wykresy pudełkowe): Uwidaczniają one obecność licznych wartości odstających oraz istotne różnice w skalach wartości pomiędzy zmiennymi. Potwierdza to konieczność przeprowadzenia standaryzacji i normalizacji danych przed przekazaniem ich do modeli wrażliwych na dystans euklidesowy, takich jak kNN.
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
 #wykresy gęstości
 ggplot(dane_dlugie_wybrane, aes(x = Wartosc, fill = Load_Type)) +
   geom_density(alpha = 0.5, color = NA) + 
@@ -121,6 +136,7 @@ ggplot(dane_dlugie_wybrane, aes(x = Wartosc, fill = Load_Type)) +
     fill = "Typ obciążenia"
   )
 ```
+Interpretacja wykresu gęstości: Pokazują one zróżnicowane kształty rozkładów dla poszczególnych klas obciążenia. Widoczne nałożenie się rozkładów sugeruje, że klasy nie są separowalne w oparciu o pojedyncze zmienne, co uzasadnia zastosowanie metod wielowymiarowych.
 
 **Analiza zbilansowania klas**
 
@@ -523,4 +539,4 @@ ggplot(wykres_dane, aes(x = reorder(model, .estimate), y = .estimate, fill = mod
 
 Ostateczne zestawienie skuteczności modeli na izolowanym zbiorze testowy, (30% danych) wskazuje na przewagę algorytmu k-Najbliższych Sąsiadów (kNN), który osiągnął najwyższą ogólną dokładność na poziomie 84.7% (współczynnik Kappa: 0,75). Pozostałe modele zaprezentowały słabszą skuteczność - Wielomianowa Regresja Logistyczna 78.0% (Kappa: 0,64), natomiast Liniowa Analiza Dyskryminacyjna 72.3% (Kappa: 0,56).
 
-**Wnioski:** Taka dysproporcja stanowi naturalną konsekwencję matematycznej natury zastosowanych metod i bezpośrednio odzwierciedla nasze dane. Poszczególne klasy obciążeń energetycznych mocnno na siebie zachodzą, tworząc nieregularne, poszarpane skupiska. Obie metody, które uzyskały niższe wyniki - Regresja Logistyczna oraz LDA - należą do rodziny modeli liniowych. Ich zadaniem jest poszukiwanie prostej granicy decyzyjnej, która podzieli przestrzeń. W środowisku naszych danych algorytmy liniowe zatrzymują się na około 70%. Nie są one w stanie dopasować się do zawiłości tych danych. Zupełnie inaczej zachowuje się algorytm kNN, który z definicji jest modelem nieliniowym. Jego działanie opiera sięna analizie najbliższego sąsiedztwa wokół nowej obserwacji. Dzięki swojej elastyczności, kNN potrafi izolować mniejsze grupy danych. Przewaga tego algorytmy w ostatecznym rankingu jest więć w pełni logiczna i potwierdza to, że zależności sterujące poborem prądu w badanej hucie mają charakter nieliniowy.
+**Wnioski:** Taka dysproporcja stanowi naturalną konsekwencję matematycznej natury zastosowanych metod i bezpośrednio odzwierciedla nasze dane. Poszczególne klasy obciążeń energetycznych mocnno na siebie zachodzą, tworząc nieregularne, poszarpane skupiska. Obie metody, które uzyskały niższe wyniki - Regresja Logistyczna oraz LDA - należą do rodziny modeli liniowych. Ich zadaniem jest poszukiwanie prostej granicy decyzyjnej, która podzieli przestrzeń. W środowisku naszych danych algorytmy liniowe zatrzymują się na około 70%. Nie są one w stanie dopasować się do zawiłości tych danych. Zupełnie inaczej zachowuje się algorytm kNN, który z definicji jest modelem nieliniowym. Jego działanie opiera się na analizie najbliższego sąsiedztwa wokół nowej obserwacji. Dzięki swojej elastyczności, kNN potrafi izolować mniejsze grupy danych. Przewaga tego algorytmy w ostatecznym rankingu jest więć w pełni logiczna i potwierdza to, że zależności sterujące poborem prądu w badanej hucie mają charakter nieliniowy.
