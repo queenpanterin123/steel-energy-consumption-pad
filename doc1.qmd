@@ -1,11 +1,11 @@
 ---
-title: "steel-energy-consumption-pad"
+title: "Analiza i Klasyfikacja Zużycia Energii w Hucie Stali"
 author: "Martyna Uranowska, Anna Górecka"
 format: html
 editor: visual
 ---
 
-## **Analiza i Predykcje Zużycia Energii w Hucie Stali**
+## 1. Wstęp
 
 Celem naszego projektu jest zbudowanie zoptymalizowanych modeli klasyfikacyjnych, które pozwolą na rozpoznanie i klasyfikację bieżącego stanu obciążenia energetycznego "Load_Type" w hucie stali. Właściwa identyfikacja profilu obciążenia w czasie rzeczywistym jest kluczowa dla optymalizacji kosztów oraz zapobiegania awariom sieci przemysłowej. W ramach analizy wykorzystałyśmy techniki uczenia maszynowego w ekosystemie `tidymodels`, kładąc szczególny nacisk na inżynierię cech (Feature Engineering), w tym transformację trygonometryczną zmiennych czasowych w celu uwzględnienia ich cyklicznej natury, zapobieganie wyciekowi danych (Data Leakage) oraz redukcję wymiarowości za pomocą algorytmu PCA.
 
@@ -27,9 +27,9 @@ library(factoextra)
 
 ```
 
-## 1. EDA
+## 2. EDA
 
-W pierwszej fazie projektu dokonalysmy wczytania danych, sprawdzilysmy zbilansowanie klas oraz wstępnie przeanalizowałyśmy wzajemne zależności. Zmienna celu "Load Type" została przekształcona na typ kategoryczny uporządkowany. Ponadto, ze względu na specyfikę danych z czujników przemysłowych, do zbadania współzależności wykorzystano korelację rang Spearmana, która w przeciwieństwie do korelacji Pearsona jest odporna na relacje nieliniowe oraz wartości odstające (outliery).
+W pierwszej fazie projektu dokonałyśmy wczytania danych, sprawdziłyśmy zbilansowanie klas oraz wstępnie przeanalizowałyśmy wzajemne zależności. Zmienna celu "Load Type" została przekształcona na typ kategoryczny uporządkowany. Ponadto, ze względu na specyfikę danych z czujników przemysłowych, do zbadania współzależności wykorzystano korelację rang Spearmana, która w przeciwieństwie do korelacji Pearsona jest odporna na relacje nieliniowe oraz wartości odstające (outliery).
 
 ```{r}
 #| message: false
@@ -46,10 +46,9 @@ dane_numeryczne <- data[, sapply(data,is.numeric)]
 
 #sprawdzenie braków danych w zbiorze
 braki_danych <- colSums(is.na(data))
-print(braki_danych)
 
 #wykres słupkowy zmiennej celu
-table(data$Load_Type)
+#table(data$Load_Type)
 
 ggplot(data, aes(x = Load_Type, fill = Load_Type)) +
   geom_bar(color = "black", alpha = 0.8) +
@@ -64,17 +63,21 @@ ggplot(data, aes(x = Load_Type, fill = Load_Type)) +
     y = "Liczba obserwacji"
   )
 ```
+
 Intrepretacja balansu klas: Wykres wskazuje na asymetrię rozkładu, gdzie klasa Light_Load przeważa nad innymi klasam. W obliczu tego niezrównoważonego rozkładu, w procesie modelowania zastosowałyśmy stratyfikację, cyzli podział, który zachowuje proporcje klas, aby zapobiec faworyzowaniu klasy dominującej.
+
 ```{r}
 #| message: false
 #| warning: false
 #| echo: false
 #macierz korelacji Spearmana
 macierz_korelacji_s <- cor(dane_numeryczne, method = "spearman")
-round(macierz_korelacji_s, 2) 
+#round(macierz_korelacji_s, 2) 
 corrplot(macierz_korelacji_s,tl.col = "black",order= "hclust",tl.cex=0.5,title = "Korelacja Spearmana między predyktorami",mar=c(0,0,2,0))
 ```
-Interoretacja macierzy korelacji Spearmana: Macierz korelacji ujawnia silne powiązania między predyktorami, co sugeruje występowanie zjawiska wspólliniowości. Ze względu na nieliniowy charakter tych zależności wybrałyśmy korelację Spearmana. Aby zreduować redundancjędanych i zwiększyć stabilność modeli, w dalszym etapie zdecydowałyśmy się na zastosowanie analizy głównych składowych.
+
+Interpretacja macierzy korelacji Spearmana: Macierz korelacji ujawnia silne powiązania między predyktorami, co sugeruje występowanie zjawiska wspólliniowości. Ze względu na nieliniowy charakter tych zależności wybrałyśmy korelację Spearmana. Aby zreduować redundancję danych i zwiększyć stabilność modeli, w dalszym etapie zdecydowałyśmy się na zastosowanie analizy głównych składowych.
+
 ```{r}
 #| message: false
 #| warning: false
@@ -109,7 +112,9 @@ ggplot(dane_dlugie_wybrane, aes(x = Wartosc, y = Load_Type, fill = Load_Type)) +
     fill = "Typ obciążenia"
   )
 ```
-Interpretacja rozkładów zmiennych numerycznych (wykresy pudełkowe): Uwidaczniają one obecność licznych wartości odstających oraz istotne różnice w skalach wartości pomiędzy zmiennymi. Potwierdza to konieczność przeprowadzenia standaryzacji i normalizacji danych przed przekazaniem ich do modeli wrażliwych na dystans euklidesowy, takich jak kNN.
+
+Interpretacja rozkładów zmiennych numerycznych (wykresy pudełkowe): Analizę wizualną ograniczyłyśmy w tym przypadku do czterech kluczowych predyktorów, gdyż pozostałe zmienne wykazują bardzo silną korelację, co prowadzi do niemal identycznych struktór rozkładów i nie wnosi dodatkowej informacji. Wybrane wykresy uwidaczniają one obecność licznych wartości odstających oraz istotne różnice w skalach wartości pomiędzy zmiennymi. Potwierdza to konieczność przeprowadzenia standaryzacji i normalizacji danych przed przekazaniem ich do modeli wrażliwych na dystans euklidesowy, takich jak kNN.
+
 ```{r}
 #| message: false
 #| warning: false
@@ -124,7 +129,7 @@ ggplot(dane_dlugie_wybrane, aes(x = Wartosc, fill = Load_Type)) +
     legend.position = "bottom",
     strip.background = element_rect(fill = "white", color = "gray70"),
     strip.text = element_text(color = "black", face = "bold", size = 10),
-    panel.spacing = unit(2, "lines"), # Jeszcze więcej oddechu między wykresami
+    panel.spacing = unit(2, "lines"), 
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     axis.title.y = element_blank(),
@@ -137,6 +142,7 @@ ggplot(dane_dlugie_wybrane, aes(x = Wartosc, fill = Load_Type)) +
     fill = "Typ obciążenia"
   )
 ```
+
 Interpretacja wykresu gęstości: Pokazują one zróżnicowane kształty rozkładów dla poszczególnych klas obciążenia. Widoczne nałożenie się rozkładów sugeruje, że klasy nie są separowalne w oparciu o pojedyncze zmienne, co uzasadnia zastosowanie metod wielowymiarowych.
 
 **Analiza zbilansowania klas**
@@ -174,14 +180,14 @@ train_num<-train_data[,sapply(train_data,is.numeric)]
 test_num<-test_data[,sapply(train_data,is.numeric)]
 
 pca_model <- prcomp(train_num, center = TRUE, scale. = TRUE)
-summary(pca_model)
+#summary(pca_model)
 
 #wykres osypiskowy
 plot(pca_model, type = "lines", main="Wykres osypiskowy")
 
 #sprawdzenia
-nrow(pca_model$rotation) == ncol(pca_model$rotation)
-sum(pca_model$sdev^2)
+#nrow(pca_model$rotation) == ncol(pca_model$rotation)
+#sum(pca_model$sdev^2)
 
 #wykres Biplot PCA
 fviz_pca_biplot(pca_model,
@@ -196,7 +202,9 @@ fviz_pca_biplot(pca_model,
                 title = "PCA Biplot - Struktura zbioru treningowego")
 ```
 
-## 2. kNN
+Na wykresie struktury zbioru treningowego widać, że mamy do czynienia z danymi o wysokim stopniu złożoności. Wartości predyktorów cechują się dużą zmiennością, a granice między typami obciążenia nie są wyraźnie zarysowane - klasy wykazują silną tendencję do nakładania sięna siebei, tworząc nieregularne i poszarpane struktury w przestrzeni wielowymiarowej. Tak duże rozmycie klas stanowi wyzwanie dla klasycznych algorytmów liniowych, ponieważ oznacza, że idealna separacja klas może być matematycznie nieosiągalna, co pozwala nam świadomie podejść do modelowania: nie oczekujemy uzyskania dokładności w okolicy 100%.
+
+## 3. kNN
 
 Aby zrobić kNN, decydujemy się na downsampling zbioru treningowego do 40%, decyzja ta wynika z tego że algorytm jest wymagający obliczeniowo. Za pomocą 5-krotnej kroswalidacji dostroiłyśmy optymalną liczbę sąsiadów, funkcję wagową oraz odpowiednią liczbę składowych PCA. Używamy też recipe, zmieniamy status tygodnia na system binarny, pozbywając się przy tym szumu płynącego z pojedynczych dni roboczych.
 
@@ -281,8 +289,6 @@ knn_tune_res %>%
 
 ```
 
-Model z normalnym kNN Uczenie i testowanie
-
 ```{r}
 #| message: false
 #| warning: false
@@ -339,7 +345,7 @@ ggplot(dane_macierzy, aes(x = Truth, y = Prediction, fill = Freq)) +
 
 Najlepszą konfiguracją okazały się funcja wagowa gaussian, liczba sąsiadów k=13, liczba składowych PCA num_comp=3. Szczytowa skuteczność kroswalidacji dla powyższych parametrów wynosi około 84.7%. Model wykazuje również dużą stabilność w przypadku Maximum_Load (74.9%), co w kontekście pracy huty stali jest kluczowe dla zachowania bezpieczeńśtwa energetycznego. Zastosowanie transformacji trygonometrycznej pozwoliło modelowi lepiej zrozumieć cykliczność doby, co bezpośrednio przełożyło się na wyższą jakość predykcji niż w klasycznych podejściach liniowych.
 
-## 3. Wielomianowa Regresja Logistyczna
+## 4. Wielomianowa Regresja Logistyczna
 
 Aby uniknąć przeuczenia z powodu dużej liczby mocno skorelowanych zmiennych. Wykorzystałyśmy więc pakiet glmnet, który samodzielnie dostraja parametry regularyzacji - siły nakładanej kary oraz balansu między metodami eliminacji Lasso i Ridge. Zastosowanie tego mechanizmu sprawiło, że algorytm samoczynnie wyzerował wagi zmiennych będących wyłącznie szumem, optymalizująć kształt. Ponownie jak w modelu kNN, również tutaj zastosowano transformację cykliczną zmiennej czasowej NSM na składowe sinus i cosinus, co umożliwiło modelom liniowym lepsze dopasowanie do dobowego profilu pracy huty.
 
@@ -425,7 +431,7 @@ ggplot(dane_macierzy_lr, aes(x = Truth, y = Prediction, fill = Freq)) +
 
 Algorytm osiąga skuteczność na poziomie około 78.0%, przy współczynniku Kappa wynoszącym 0,64. Wartość współczynnika Kappa wskazuje na istotną zgodność predykcji, wykraczającą znacząco poza przypadkowość. Mimo to, model nadal napotyka trudnośći w precyzyjnym rozróżnieniu stanów Medium od Maximum Load. Rozmycie klasyfikacji między tymi dwiema klasami sugeruje, że różnice między średnim a skrajnym zużyciem energii są subtelne. Stanowi to empiryczny dowód na to, że zależności między odczytami z czujników a typem obciążenia mają charakter silnie nieliniowy. Klasyczny model, opierający się na budowaniu liniowych granic decyzyjnych, napotyka naturalne bariery w tak złożonym środowisku przemysłowym.
 
-## 4. LDA
+## 5. LDA
 
 Ostatnim modelem jest wariant deterministyczny. Model LDA nie posiada hiperparametrów i nie wymaga strojenia, ponieważ opiera się na wyliczaniu macierzy kowariancji i rozkładzie prawdopodobieństw. Tutaj również zastosowałyśmy transformację trygonometryczną zmiennej czasowej NSM. Na podstawie wcześniejszej analizy wykresu osypiskowego, przypisałyśmy do modelu na sztywno cztery główne składowe PCA.
 
@@ -493,7 +499,7 @@ ggplot(dane_macierzy_lda, aes(x = Truth, y = Prediction, fill = Freq)) +
 
 Model LDA osiągnął dokładność rzędu 72.3%. Jest to wynik nieco niższy niż w przypadku poprzednich modeli. Wartość 0.56 współczynnika Kappa pokazuje, że LDA w warunkach silnej nieliniowości danych przemysłowych działo jako poprawny model bazowy, jednak wykazuje małą elastyczność w porównaniu do modeli opartych na sąsiedztwie. Zastosowane rzutowania PCA (4 składowe) oraz transformacja trygonometryczna NSM pozwoliła zminimalizować ryzyko niestabilności numerycznej macierzy kowariancji. Analiza macierzy pomyłek wskazuje, że LDA wykazuje tendencję do nadmiernej klasyfikacji stanów jako Maximum Load, co w kontekście biznesowym huty przekłada się na wyższączułość kosztem precyzji.
 
-## 5. Podsumowanie
+## 6. Podsumowanie
 
 Wszystkie wyuczone modele zostały ostatecznie przetestowane na tym samym zbiorze testowym. Naszymi głównymi miarami porównawczymi były ogólna dokładność oraz macierze pomyłek, dzięki którym mogłyśmy bezpośrednio zweryfikować, czy modele nie omijają krytycznej biznesowo klasy "MAximum_Load".
 
