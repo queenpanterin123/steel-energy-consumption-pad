@@ -13,6 +13,7 @@ Celem naszego projektu jest zbudowanie zoptymalizowanych modeli klasyfikacyjnych
 
 W pierwszej fazie projektu dokonalysmy wczytania danych, sprawdzilysmy zbilansowanie klas oraz wstępnie przeanalizowałyśmy wzajemne zależności. Zmienna celu "Load Type" została przekształcona na typ kategoryczny uporządkowany. Ponadto, ze względu na specyfikę danych z czujników przemysłowych, do zbadania współzależności wykorzystano korelację rang Spearmana, która w przeciwieństwie do korelacji Pearsona jest odporna na relacje nieliniowe oraz wartości odstające (outliery).
 
+
 ```{r}
 #| message: false
 #| warning: false
@@ -23,8 +24,14 @@ library(dplyr)
 library(corrplot)
 
 data<-read.csv("steel_data.csv")
+data
+
 #Konwersja zmiennej objaśnianej do typu kategorycznego (factor)
 data$Load_Type <- factor(data$Load_Type, levels = c("Light_Load","Medium_Load","Maximum_Load"))
+data <- data %>% select(-date)
+
+
+#data <- data %>% select(-NSM)
 
 table(data$Load_Type) #jest ok
 dane_numeryczne <- data[, sapply(data,is.numeric)]
@@ -123,9 +130,11 @@ ggplot(dane_dlugie_wybrane, aes(x = Wartosc, fill = Load_Type)) +
   )
 ```
 
+
 **Analiza zbilansowania klas**
 
 Wykres balansu klas ukazuje niezbilansowanie zbioru - klasa "Light_Load" zdecydowanie dominuje, poczas gdy krytyczna biznesowo klasa "Maximum_Load" jest najmniej liczna. Jakie kroki w związku z tym podjęłyśmy: 1. Stratyfikacja: Zastosowano podział strata = Load_Type, co gwarantuje, że zbiór testowy i treningowy zachowają identyczne proporcje klas. 2. Ponieważ macierz korelacji ujawnia silną współliniowość predyktorów postanowiłyśmy zastosować PCA. 3. Wykresy rozkładów pokazały drastyczne różnice w rzędach wielkości między zmiennymi. Przed podaniem danych do modeli wymusza to na nas wykonanie normalizacji.
+
 
 ------------------------------------------------------------------------
 
@@ -198,7 +207,7 @@ library(dplyr)
 # DOWNSAMPLING TYLKO DLA kNN
 
 set.seed(123)
-split_knn <- initial_split(train_data, prop = 0.4, strata = Load_Type)
+split_knn <- initial_split(train_data, prop = 0.3, strata = Load_Type)
 train_data_knn <- training(split_knn)
 
 ```
@@ -220,7 +229,11 @@ knn_model <- nearest_neighbor(
 # Recepta z optymalizacją PCA
 # Normalizacja przed PCA
 knn_pca_recipe <- recipe(Load_Type ~ ., data = train_data_knn) %>%
-  step_rm(Day_of_week) %>% 
+  step_mutate(
+    NSM_sin = sin(2 * pi * NSM / 86400),
+    NSM_cos = cos(2 * pi * NSM / 86400)
+  ) %>%
+  step_rm(NSM, Day_of_week) %>% 
   step_dummy(all_nominal_predictors())%>%
   step_normalize(all_numeric_predictors()) %>%
   step_pca(all_numeric_predictors(), num_comp = tune())
@@ -310,6 +323,8 @@ print(podsumowanie_knn)
 
 
 # wykres heatmapa
+macierz_knn <- conf_mat(predykcje_knn, truth = Load_Type, estimate = .pred_class)
+
 dane_macierzy <- as.data.frame(macierz_knn$table)
 
 dane_macierzy <- dane_macierzy %>%
@@ -352,7 +367,10 @@ lr_model<-multinom_reg(penalty = tune(), mixture=tune()) %>%
 #set_engine z glmnet biblioteka w R ktora bardzo sprawnie wylicza z lesso i ridge
 
 lr_recipe <- recipe(Load_Type ~ ., data = train_data) %>% 
-  step_rm(Day_of_week) %>%
+  step_mutate(
+    NSM_sin = sin(2 * pi * NSM / 86400),
+    NSM_cos = cos(2 * pi * NSM / 86400)
+  ) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_pca(all_numeric_predictors(), num_comp = tune())
@@ -420,11 +438,13 @@ ggplot(dane_macierzy_lr, aes(x = Truth, y = Prediction, fill = Freq)) +
 
 ```
 
+
 Algorytm osiąga skuteczność na poziomie 73.6%. Wartość współczynnika Kappa na poziomie 0.568 wskazuje na umiarkowaną, ale zauważalną siłę predykcyjną, która znacznie przewyższa losowe zgadywanie klas. Zauważalnym wyzwaniem dla tego modelu okazało się rozdzielenie stanów Medium i Maximum Load. Rozmycie predykcji między tymi dwiema klasami sugeruje, że różnice między średnim a skrajnym zużyciem energii są subtelne. Słaba skuteczność tego modelu stanowi empiryczny dowód na to, że zależności między odczytami z czujników a typem obciążenia mają charakter silnie nieliniowy.Klasyczny model, opierający się na budowaniu liniowych granic decyzyjnych, napotyka naturalne bariery w tak złożonym środowisku przemysłowym.
 
 **LDA**
 
 Model LDA nie posiada hiperparametrów i nie wymaga budowania siatki do strojenia. Opierając się na wcześniejszej analizie wykresu osypiskowego, przypisałyśmy do modelu na sztywno cztery główne składowe PCA.
+
 
 ```{r}
 #| message: false
@@ -438,7 +458,10 @@ lda_model <- discrim_linear() %>%
 
 #num_comp 4 na razie tak jak w osypiskowym pokazywalo 98%
 lda_recipe <- recipe(Load_Type ~ ., data = train_data) %>%
-  step_rm(Day_of_week) %>% 
+  step_mutate(
+    NSM_sin = sin(2 * pi * NSM / 86400),
+    NSM_cos = cos(2 * pi * NSM / 86400)
+  ) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_pca(all_numeric_predictors(), num_comp = 4)
