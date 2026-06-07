@@ -5,16 +5,14 @@ format: html
 editor: visual
 ---
 
-## Tytuł
-**Analiza i Predykcje Zużycia Energii w Hucie Stali**
-Celem naszego projektu jest zbudowanie zoptymalizowanych modeli klasyfikacyjnych potrafiących przewidzieć typ obciążenia energetycznego "Load_Type" w hucie stali.
-Właściwa predykcja zużycia energii jest kluczowa dla optymalizacji kosztów oraz zapobiegania awariom sieci przemysłowej. W ramach analizy wykorzystałyśmy techniki uczenia maszynowego w ekosystemie `tidymodels`, kładąc szczególny nacisk na inżynierię cech (Feature Engineering), zapobieganie wyciekowi danych (Data Leakage) oraz redukcję wymiarowości za pomocą algorytmu PCA.
-------------------------------------------------------------------------
+## **Analiza i Predykcje Zużycia Energii w Hucie Stali**
+
+Celem naszego projektu jest zbudowanie zoptymalizowanych modeli klasyfikacyjnych, które pozwolą na rozpoznanie i klasyfikację bieżącego stanu obciążenia energetycznego "Load_Type" w hucie stali. Właściwa identyfikacja profilu obciążenia w czasie rzeczywistym jest kluczowa dla optymalizacji kosztów oraz zapobiegania awariom sieci przemysłowej. W ramach analizy wykorzystałyśmy techniki uczenia maszynowego w ekosystemie `tidymodels`, kładąc szczególny nacisk na inżynierię cech (Feature Engineering), zapobieganie wyciekowi danych (Data Leakage) oraz redukcję wymiarowości za pomocą algorytmu PCA.
 
 ## EDA
-W pierwszej fazie projektu dokonalysmy wczytania danych, sprawdzilysmy zbilansowanie klas oraz wstępnie przeanalizowałyśmy wzajemne zależności.
-Zmienna celu "Load Type" została przekształcona na typ kategoryczny uporządkowany. Ponadto, ze względu na specyfikę danych z czujników przemysłowych, do zbadania współzależności wykorzystano korelację rang Spearmana, która w przeciwieństwie do korelacji Pearsona jest odporna na relacje nieliniowe oraz wartości odstające (outliery).
-------------------------------------------------------------------------
+
+W pierwszej fazie projektu dokonalysmy wczytania danych, sprawdzilysmy zbilansowanie klas oraz wstępnie przeanalizowałyśmy wzajemne zależności. Zmienna celu "Load Type" została przekształcona na typ kategoryczny uporządkowany. Ponadto, ze względu na specyfikę danych z czujników przemysłowych, do zbadania współzależności wykorzystano korelację rang Spearmana, która w przeciwieństwie do korelacji Pearsona jest odporna na relacje nieliniowe oraz wartości odstające (outliery).
+
 ```{r}
 #| message: false
 #| warning: false
@@ -125,12 +123,9 @@ ggplot(dane_dlugie_wybrane, aes(x = Wartosc, fill = Load_Type)) +
   )
 ```
 
-##Analiza zbilansowania klas
-Wykres balansu klas ukazuje niezbilansowanie zbioru - klasa "Light_Load" zdecydowanie dominuje, poczas gdy krytyczna biznesowo klasa "Maximum_Load" jest najmniej liczna. 
-Jakie kroki w związku z tym podjęłyśmy:
-1. Stratyfikacja: Zastosowano podział strata = Load_Type, co gwarantuje, że zbiór testowy i treningowy zachowają identyczne proporcje klas.
-2. Ponieważ macierz korelacji ujawnia silną współliniowość predyktorów postanowiłyśmy zastosować PCA.
-3. Wykresy rozkładów pokazały drastyczne różnice w rzędach wielkości między zmiennymi. Przed podaniem danych do modeli wymusza to na nas wykonanie normalizacji.
+**Analiza zbilansowania klas**
+
+Wykres balansu klas ukazuje niezbilansowanie zbioru - klasa "Light_Load" zdecydowanie dominuje, poczas gdy krytyczna biznesowo klasa "Maximum_Load" jest najmniej liczna. Jakie kroki w związku z tym podjęłyśmy: 1. Stratyfikacja: Zastosowano podział strata = Load_Type, co gwarantuje, że zbiór testowy i treningowy zachowają identyczne proporcje klas. 2. Ponieważ macierz korelacji ujawnia silną współliniowość predyktorów postanowiłyśmy zastosować PCA. 3. Wykresy rozkładów pokazały drastyczne różnice w rzędach wielkości między zmiennymi. Przed podaniem danych do modeli wymusza to na nas wykonanie normalizacji.
 
 ------------------------------------------------------------------------
 
@@ -188,9 +183,7 @@ fviz_pca_biplot(pca_model,
 
 **kNN**
 
-Aby zrobić kNN, decydujemy się na downsampling zbioru treningowego do 40%, decyzja ta wynika z tego że algorytm jest wymagający obliczeniowo.
-Za pomocą 5-krotnej kroswalidacji dostroiłyśmy optymalną liczbę sąsiadów, funkcję wagową oraz odpowiednią liczbę składowych PCA. Używamy też recipe, zmieniamy status tygodnia na system binarny, pozbywając się przy tym szumu płynącego z pojedynczych dni roboczych.
-
+Aby zrobić kNN, decydujemy się na downsampling zbioru treningowego do 40%, decyzja ta wynika z tego że algorytm jest wymagający obliczeniowo. Za pomocą 5-krotnej kroswalidacji dostroiłyśmy optymalną liczbę sąsiadów, funkcję wagową oraz odpowiednią liczbę składowych PCA. Używamy też recipe, zmieniamy status tygodnia na system binarny, pozbywając się przy tym szumu płynącego z pojedynczych dni roboczych.
 
 ```{r}
 #| message: false
@@ -216,7 +209,6 @@ train_data_knn <- training(split_knn)
 # Utworzenie foldów do kroswalidacji na nowym zbiorze treningowym
 set.seed(123)
 foldy <- vfold_cv(train_data_knn, v = 5)
-
 # Definicja modelu kNN (tunujemy liczbę sąsiadów i funkcję wagową)
 knn_model <- nearest_neighbor(
   neighbors = tune(),
@@ -343,14 +335,11 @@ ggplot(dane_macierzy, aes(x = Truth, y = Prediction, fill = Freq)) +
 
 
 ```
-Parametry modelu:
-Najlepszą konfiguracją okazały się funcja wagowa gaussian, liczba sąsiadów k=13, liczba składowych PCA num_comp=3. Szczytowa skuteczność kroswalidacni dla powyższych parametrów wynosi około 85.3%. 
-Wniosek biznesowy:
-Model stwarza realne ryzyko dla huty. Największym błędem kNN jest to, że prawie 23% faktycznych pików krytycznych zostało przez niego zbagatelizowanych i uznanych za obciążenie średnie lub lekkie. 
 
+Parametry modelu: Najlepszą konfiguracją okazały się funcja wagowa gaussian, liczba sąsiadów k=13, liczba składowych PCA num_comp=3. Szczytowa skuteczność kroswalidacni dla powyższych parametrów wynosi około 85.3%. Wniosek biznesowy: Model stwarza realne ryzyko dla huty. Największym błędem kNN jest to, że prawie 23% faktycznych pików krytycznych zostało przez niego zbagatelizowanych i uznanych za obciążenie średnie lub lekkie.
 
-**Wielomianowa regresja logistyczna**
-Aby uniknąć przeuczenia z powodu dużej liczby mocno skorelowanych zmiennych. Wykorzystałyśmy więc pakiet glmnet, który samodzielnie dostraja parametry regularyzacji - siły nakładanej kary oraz balansu między metodami eliminacji Lasso i Ridge. Zastosowanie tego mechanizmu sprawiło, że algorytm samoczynnie wyzerował wagi zmiennych będących wyłącznie szumem, optymalizująć kształt.
+**Wielomianowa regresja logistyczna** Aby uniknąć przeuczenia z powodu dużej liczby mocno skorelowanych zmiennych. Wykorzystałyśmy więc pakiet glmnet, który samodzielnie dostraja parametry regularyzacji - siły nakładanej kary oraz balansu między metodami eliminacji Lasso i Ridge. Zastosowanie tego mechanizmu sprawiło, że algorytm samoczynnie wyzerował wagi zmiennych będących wyłącznie szumem, optymalizująć kształt.
+
 ```{r}
 #| message: false
 #| warning: false
@@ -430,11 +419,13 @@ ggplot(dane_macierzy_lr, aes(x = Truth, y = Prediction, fill = Freq)) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, hjust = 0.5))
 
 ```
-Algorytm osiąga skuteczność na poziomie 73.6%. Wartość współczynnika Kappa na poziomie 0.568 wskazuje na umiarkowaną, ale zauważalną siłę predykcyjną, która znacznie przewyższa losowe zgadywanie klas. Zauważalnym wyzwaniem dla tego modelu okazało się rozdzielenie stanów Medium i Maximum Load. Rozmycie predykcji między tymi dwiema klasami sugeruje, że różnice między średnim a skrajnym zużyciem energii są subtelne.
-Słaba skuteczność tego modelu stanowi empiryczny dowód na to, że zależności między odczytami z czujników a typem obciążenia mają charakter silnie nieliniowy.Klasyczny model, opierający się na budowaniu liniowych granic decyzyjnych, napotyka naturalne bariery w tak złożonym środowisku przemysłowym.
+
+Algorytm osiąga skuteczność na poziomie 73.6%. Wartość współczynnika Kappa na poziomie 0.568 wskazuje na umiarkowaną, ale zauważalną siłę predykcyjną, która znacznie przewyższa losowe zgadywanie klas. Zauważalnym wyzwaniem dla tego modelu okazało się rozdzielenie stanów Medium i Maximum Load. Rozmycie predykcji między tymi dwiema klasami sugeruje, że różnice między średnim a skrajnym zużyciem energii są subtelne. Słaba skuteczność tego modelu stanowi empiryczny dowód na to, że zależności między odczytami z czujników a typem obciążenia mają charakter silnie nieliniowy.Klasyczny model, opierający się na budowaniu liniowych granic decyzyjnych, napotyka naturalne bariery w tak złożonym środowisku przemysłowym.
 
 **LDA**
+
 Model LDA nie posiada hiperparametrów i nie wymaga budowania siatki do strojenia. Opierając się na wcześniejszej analizie wykresu osypiskowego, przypisałyśmy do modelu na sztywno cztery główne składowe PCA.
+
 ```{r}
 #| message: false
 #| warning: false
@@ -494,10 +485,12 @@ ggplot(dane_macierzy_lda, aes(x = Truth, y = Prediction, fill = Freq)) +
   ) +
   theme(panel.grid = element_blank(), axis.text.x = element_text(angle = 0, hjust = 0.5))
 ```
+
 Model LDA osiągnął dokładność rzędu 70.0%. Jest to wynik nieco niższy niż w przypadku poprzednich modeli. Wartość 0.524 współczynnika Kappa potwierdza umiarkowaną zgodność predykcji z wartościami rzeczywistymi. Algorytm ten wykazuje silną tendencję do "przeszacowywania" - aż 34.8% średnich obciążeń uznaje za maksymalne, z kolei klasę Maximum_Load rozpoznaje z zadowalającą skutecznością 71.2%. Analiza macierzy ujawnia wysoką czułość modelu. W realiach huty stali doprowadziłoby to do niepotrzebnego angażowania rezerw mocy.
 
 **Podsumowanie**
-Wszystkie wyuczone modele zostały ostatecznie przetestowane na tym samym zbiorze testowym. Naszymi głównymi miarami porównawczymi były ogólna dokładność oraz macierze pomyłek, dzięki którym mogłyśmy bezpośrednio zweryfikować, czy modele nie omijają krytycznej biznesowo klasy "MAximum_Load". 
+
+Wszystkie wyuczone modele zostały ostatecznie przetestowane na tym samym zbiorze testowym. Naszymi głównymi miarami porównawczymi były ogólna dokładność oraz macierze pomyłek, dzięki którym mogłyśmy bezpośrednio zweryfikować, czy modele nie omijają krytycznej biznesowo klasy "MAximum_Load".
 
 ```{r}
 #| message: false
@@ -525,6 +518,5 @@ ggplot(wykres_dane, aes(x = reorder(model, .estimate), y = .estimate, fill = mod
 
 
 ```
-Ostateczne zestawienie wyników wskazuje na przewagę algorytmu k-Najbliższych Sąsiadów (kNN), który osiągnął najwyższą ogólną dokładność na poziomie 84.8%. Pozostałe modele zaprezentowały słabszą skuteczność - Wielomianowa Regresja Logistyczna 73,6%, natomiast Liniowa Analiza Dyskryminacyjna 70,0%. Taka dysproporcja stanowi naturalną konsekwencję matematycznej natury zastosowanych metod i bezpośrednio odzwierciedla nasze dane.
-Poszczególne klasy obciążeń energetycznych mocnno na siebie zachodzą, tworząc nieregularne, poszarpane skupiska. Obie metody, które uzyskały niższe wyniki - Regresja Logistyczna oraz LDA - należą do rodziny modeli liniowych. Ich zadaniem jest poszukiwanie prostej granicy decyzyjnej, która podzieli przestrzeń. W środowisku naszych danych algorytmy liniowe zatrzymują się na około 70%. Nie są one w stanie dopasować się do zawiłości tych danych.
-Zupełnie inaczej zachowuje się algorytm kNN, który z definicji jest modelem nieliniowym. Jego działanie opiera sięna analizie najbliższego sąsiedztwa wokół nowej obserwacji. Dzięki swojej elastyczności, kNN potrafi izolować mniejsze grupy danych. Przewaga tego algorytmy w ostatecznym rankingu jest więć w pełni logiczna i potwierdza to, że zależności sterujące poborem prądu w badanej hucie mają charakter nieliniowy.
+
+Ostateczne zestawienie wyników wskazuje na przewagę algorytmu k-Najbliższych Sąsiadów (kNN), który osiągnął najwyższą ogólną dokładność na poziomie 84.8%. Pozostałe modele zaprezentowały słabszą skuteczność - Wielomianowa Regresja Logistyczna 73,6%, natomiast Liniowa Analiza Dyskryminacyjna 70,0%. Taka dysproporcja stanowi naturalną konsekwencję matematycznej natury zastosowanych metod i bezpośrednio odzwierciedla nasze dane. Poszczególne klasy obciążeń energetycznych mocnno na siebie zachodzą, tworząc nieregularne, poszarpane skupiska. Obie metody, które uzyskały niższe wyniki - Regresja Logistyczna oraz LDA - należą do rodziny modeli liniowych. Ich zadaniem jest poszukiwanie prostej granicy decyzyjnej, która podzieli przestrzeń. W środowisku naszych danych algorytmy liniowe zatrzymują się na około 70%. Nie są one w stanie dopasować się do zawiłości tych danych. Zupełnie inaczej zachowuje się algorytm kNN, który z definicji jest modelem nieliniowym. Jego działanie opiera sięna analizie najbliższego sąsiedztwa wokół nowej obserwacji. Dzięki swojej elastyczności, kNN potrafi izolować mniejsze grupy danych. Przewaga tego algorytmy w ostatecznym rankingu jest więć w pełni logiczna i potwierdza to, że zależności sterujące poborem prądu w badanej hucie mają charakter nieliniowy.
