@@ -140,7 +140,7 @@ ul.task-list li input[type="checkbox"] {
 </div>
 </div>
 </div>
-<p>Na wykresie struktury zbioru treningowego widać, że mamy do czynienia z danymi o wysokim stopniu złożoności. Wartości predyktorów cechują się dużą zmiennością, a granice między typami obciążenia nie są wyraźnie zarysowane - klasy wykazują silną tendencję do nakładania się na siebie, tworząc nieregularne i poszarpane struktury w przestrzeni wielowymiarowej. Tak duże rozmycie klas stanowi wyzwanie dla klasycznych algorytmów liniowych, ponieważ oznacza, że idealna separacja klas może być matematycznie nieosiągalna, co pozwala nam świadomie podejść do modelowania: nie oczekujemy uzyskania dokładności w okolicy 100%.</p>
+<p>Na wykresie struktury zbioru treningowego widać, że mamy do czynienia z danymi o wysokim stopniu złożoności. Wartości predyktorów cechują się dużą zmiennością, a granice między typami obciążenia nie są wyraźnie zarysowane - klasy wykazują silną tendencję do nakładania się na siebie, tworząc nieregularne i poszarpane struktury w przestrzeni wielowymiarowej. Tak duże rozmycie klas stanowi wyzwanie dla klasycznych algorytmów liniowych, ponieważ oznacza, że idealna separacja klas może być matematycznie nieosiągalna, co pozwala nam świadomie podejść do modelowania: nie oczekujemy uzyskania dokładności w okolicy 95%.</p>
 </section>
 <section id="knn" class="level2">
 <h2 class="anchored" data-anchor-id="knn">3. kNN</h2>
@@ -200,7 +200,7 @@ ul.task-list li input[type="checkbox"] {
 </div>
 <section id="interpretacja-2" class="level3">
 <h3 class="anchored" data-anchor-id="interpretacja-2">Interpretacja</h3>
-<p>Model LDA osiągnął dokładność rzędu 72.3%. Jest to wynik nieco niższy niż w przypadku poprzednich modeli. Wartość 0.56 współczynnika Kappa pokazuje, że LDA w warunkach silnej nieliniowości danych przemysłowych działo jako poprawny model bazowy, jednak wykazuje małą elastyczność w porównaniu do modeli opartych na sąsiedztwie. Zastosowane rzutowania PCA (4 składowe) oraz transformacja trygonometryczna NSM pozwoliła zminimalizować ryzyko niestabilności numerycznej macierzy kowariancji. Analiza macierzy pomyłek wskazuje, że LDA wykazuje tendencję do nadmiernej klasyfikacji stanów jako Maximum Load, co w kontekście biznesowym huty przekłada się na wyższą czułość kosztem precyzji.</p>
+<p>Model LDA osiągnął dokładność rzędu 72.3%. Jest to wynik nieco niższy niż w przypadku poprzednich modeli. Wartość 0.56 współczynnika Kappa pokazuje, że LDA w warunkach silnej nieliniowości danych przemysłowych działo jako poprawny model bazowy, jednak wykazuje małą elastyczność w porównaniu do modeli opartych na sąsiedztwie. Zastosowane rzutowania PCA (4 składowe) oraz transformacja trygonometryczna NSM pozwoliła zminimalizować ryzyko niestabilności numerycznej macierzy kowariancji.</p>
 </section>
 </section>
 <section id="podsumowanie" class="level2">
