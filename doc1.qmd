@@ -10,10 +10,11 @@ editor: visual
 Celem naszego projektu jest zbudowanie zoptymalizowanych modeli klasyfikacyjnych, które pozwolą na rozpoznanie i klasyfikację bieżącego stanu obciążenia energetycznego "Load_Type" w hucie stali. Właściwa identyfikacja profilu obciążenia w czasie rzeczywistym jest kluczowa dla optymalizacji kosztów oraz zapobiegania awariom sieci przemysłowej. W ramach analizy wykorzystałyśmy techniki uczenia maszynowego w ekosystemie `tidymodels`, kładąc szczególny nacisk na inżynierię cech (Feature Engineering), w tym transformację trygonometryczną zmiennych czasowych w celu uwzględnienia ich cyklicznej natury, zapobieganie wyciekowi danych (Data Leakage) oraz redukcję wymiarowości za pomocą algorytmu PCA.
 
 ```{r}
-#import wszystkich potrzebnych biblotek
 #| message: false
 #| warning: false
 #| echo: false
+
+#import wszystkich potrzebnych biblotek
 library(ggplot2)
 library(tidyr)
 library(dplyr)
@@ -152,7 +153,7 @@ Zdecydowałyśmy się na podzielenie 70% uczący i 30% testowy. Następnie wizua
 #| message: false
 #| warning: false
 #| echo: false
-#| 
+
 #przygotowanie danych treningowych i testowych
 set.seed(238)
 split_glowny <- initial_split(data, prop = 0.7, strata = Load_Type)
@@ -297,14 +298,13 @@ final_knn_model <- fit(final_knn_wf, data = train_data_knn)
 #testowanie na wspólnym zbiorze
 predykcje_knn <- predict(final_knn_model, new_data = test_data) %>% bind_cols(predict(final_knn_model, new_data = test_data, type = "prob")) %>% bind_cols(test_data %>% select(Load_Type))
 
-#metryki 
+#metryki na później
 wyniki_testowe_knn <- predykcje_knn %>%
   metrics(truth = Load_Type, estimate = .pred_class)
 
 podsumowanie_knn <- wyniki_testowe_knn %>%
   select(.metric, .estimate) %>%
-  mutate(model = "kNN (z PCA)")
-print(podsumowanie_knn)
+  mutate(model = "kNN")
 
 
 #wykres heatmapa
@@ -319,7 +319,6 @@ dane_macierzy <- dane_macierzy %>%
 
 ggplot(dane_macierzy, aes(x = Truth, y = Prediction, fill = Freq)) +
   geom_tile(color = "white") + 
-  # Poniższa linijka odpowiada za wstawienie liczby i procenta pod spodem
   geom_text(aes(label = sprintf("%d\n(%.1f%%)", Freq, Procent)), size = 4) +
   scale_fill_gradient(low = "#e5f5f9", high = "#2ca25f") +
   theme_linedraw() +
@@ -349,13 +348,12 @@ Aby uniknąć przeuczenia z powodu dużej liczby mocno skorelowanych zmiennych. 
 #| warning: false
 #| echo: false
 
+#definicja modelu 
 lr_model<-multinom_reg(penalty = tune(), mixture=tune()) %>% 
   set_engine("glmnet") %>%
   set_mode("classification") 
-#penalty sprawia, ze sa ustawiane bezpieczne wagi- regularyzacja, my nie musimy wybierac bo uzywamy tune()
-#mixture - kara dla wag , lasso zeruje wagi slabych zmiennych, ridge sciaga do zera, uzywamy tune() wiec nie musimy wybierac - mamy wiec Elastic Net, bo czerpie model z obu kar korzysci
-#set_engine z glmnet biblioteka w R ktora bardzo sprawnie wylicza z lesso i ridge
 
+#recepta z optymalizacją PCA (i normalizacja)
 lr_recipe <- recipe(Load_Type ~ ., data = train_data) %>% 
   step_mutate(
     NSM_sin = sin(2 * pi * NSM / 86400),
@@ -365,50 +363,44 @@ lr_recipe <- recipe(Load_Type ~ ., data = train_data) %>%
   step_dummy(all_nominal_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_pca(all_numeric_predictors(), num_comp = tune())
-#usuwamy zmienne tekstowe; normalizujemy numerowe; pca, ale pozwalamy przez tune() wybrac ile skladowych dla lepszego accuracy
 
+#połączenie modelu i recepty
 lr_workflow <- workflow() %>%
   add_model(lr_model) %>%
   add_recipe(lr_recipe)
-#laczenie modelu i recepty w jeden obiekt, czyli workflow pipeline zrobiony 
 
+#foldy
 set.seed(257)
 foldy_pelne <- vfold_cv(train_data, v = 5)
 lr_grid <- grid_regular(penalty(), mixture(), num_comp(range = c(3, 5)), levels = 3)
-#grid hiperparametrow
 
+#siatka hiperparametrów
 lr_tune_res <- tune_grid(
   lr_workflow,
   resamples = foldy_pelne,
   grid = lr_grid,
   metrics = metric_set(accuracy, kap)
 )
-#sprawdzanie na naszym lr_grid, lr_workflow, foldach ktora kombinacja bedzie najleosza; uzywam tez metryki kappa, zeby sprawdzic czy dokladnosc sama jest ok, czy model jest do uzycia wogole
 
-
+#wydobycie optymalnych hiperparametrów i finalizacja przepływu
 best_lr <- select_best(lr_tune_res, metric = "accuracy")
-
-#wybieramy najlepsza kombinacje parametrow z wielu wielu ktore zrobilismy (ile w PCA skladowych, jaka kara)
 final_lr_wf <- finalize_workflow(lr_workflow, best_lr)
 
-#juz nie tune tylko twarde parametry wybrane
+#trenowanie
 final_lr_model <- fit(final_lr_wf, data = train_data)
-#dotychczas model uczyl sie na 80% w celu znalezienia parametrow, teraz dajemy mu clay treningowy set
 
+#testowanie
 predykcje_lr <- predict(final_lr_model, new_data = test_data) %>%
   bind_cols(test_data %>% select(Load_Type))
 
+#metryki na później
 podsumowanie_lr <- predykcje_lr %>%
   metrics(truth = Load_Type, estimate = .pred_class) %>%
   select(.metric, .estimate) %>%
-  mutate(model = "Regresja Logistyczna (z PCA)")
-
-
-print(podsumowanie_lr)
+  mutate(model = "Regresja Logistyczna")
 
 #wykres
 macierz_lr <- conf_mat(predykcje_lr, truth = Load_Type, estimate = .pred_class)
-
 
 dane_macierzy_lr <- as.data.frame(macierz_lr$table) %>%
   group_by(Truth) %>%
@@ -441,13 +433,13 @@ Ostatnim modelem jest wariant deterministyczny. Model LDA nie posiada hiperparam
 #| message: false
 #| warning: false
 #| echo: false
+
+#definicja modelu 
 lda_model <- discrim_linear() %>%
   set_engine("MASS") %>%
   set_mode("classification")
 
-#nie robimy tuningu, bo LDA nie ma hiperparametrow do strojenia!!!
-
-#num_comp 4 na razie tak jak w osypiskowym pokazywalo 98%
+#recepta z optymalizacją PCA (i normalizacja)
 lda_recipe <- recipe(Load_Type ~ ., data = train_data) %>%
   step_mutate(
     NSM_sin = sin(2 * pi * NSM / 86400),
@@ -456,29 +448,25 @@ lda_recipe <- recipe(Load_Type ~ ., data = train_data) %>%
   step_rm(NSM,Day_of_week)%>%
   step_dummy(all_nominal_predictors()) %>%
   step_normalize(all_numeric_predictors()) %>%
-  step_pca(all_numeric_predictors(), num_comp = 4)
-#czyli najpierw usuwamy teksty i war nominalne; poozniej normaluzujemy; pozniej rzutujemy pca
+  step_pca(all_numeric_predictors(), num_comp = 4) #num_comp 4 ponieważ na wykresie osypiskowym 98%
 
-
+#połączenie modelu i recepty
 lda_workflow <- workflow() %>%
   add_model(lda_model) %>%
   add_recipe(lda_recipe)
-#bardzo prosty workflow tu jest - tylko model i recepta
 
+#trenowanie
 final_lda_model <- fit(lda_workflow, data = train_data)
 
-
+#testowanie
 predykcje_lda <- predict(final_lda_model, new_data = test_data) %>%
   bind_cols(test_data %>% select(Load_Type))
 
-
-
+#metryki na później
 podsumowanie_lda <- predykcje_lda %>%
   metrics(truth = Load_Type, estimate = .pred_class) %>%
   select(.metric, .estimate) %>%
-  mutate(model = "LDA (z PCA)")
-
-print(podsumowanie_lda)
+  mutate(model = "LDA")
 
 #wykres
 macierz_lda <- conf_mat(predykcje_lda, truth = Load_Type, estimate = .pred_class)
@@ -513,6 +501,7 @@ Wszystkie wyuczone modele zostały ostatecznie przetestowane na tym samym zbiorz
 #| message: false
 #| warning: false
 #| echo: false
+
 zestawienie <- bind_rows(
   podsumowanie_knn,
   podsumowanie_lr,
@@ -520,21 +509,50 @@ zestawienie <- bind_rows(
 ) 
 
 wykres_dane <- zestawienie %>%
-  filter(.metric == "accuracy")
+  mutate(
+    .metric = case_when(
+      .metric == "accuracy" ~ "Dokładność (Accuracy)",
+      .metric == "kap" ~ "Współczynnik Kappa",
+      TRUE ~ .metric
+    )
+  ) %>%
+  mutate(.metric = factor(.metric, levels = c("Dokładność (Accuracy)", "Współczynnik Kappa")))
 
-ggplot(wykres_dane, aes(x = reorder(model, .estimate), y = .estimate, fill = model)) +
-  geom_col(color = "black", alpha = 0.8) +
-  geom_text(aes(label = scales::percent(.estimate, accuracy = 0.1)),
-            hjust = 1.2, color = "white", fontface = "bold", size = 5) +
-  coord_flip()+
+#wykres
+ggplot(wykres_dane, aes(x = reorder(model, .estimate, FUN = max), y = .estimate, fill = model)) +
+  geom_col(color = "black", alpha = 0.85, width = 0.65) +
+  geom_text(
+    aes(label = scales::percent(.estimate, accuracy = 0.1)),
+    hjust = -0.2, 
+    color = "black", 
+    fontface = "bold", 
+    size = 4.5
+  ) +
+  coord_flip() +
+  facet_wrap(~ .metric, ncol = 2) + 
+  scale_fill_brewer(palette = "Set2") + 
+  scale_y_continuous(expand = expansion(mult = c(0, 0.3)), labels = scales::percent_format()) +
+  theme_minimal() +
+  theme(
+    legend.position = "none", 
+    strip.background = element_rect(fill = "#f0f0f0", color = NA), 
+    strip.text = element_text(color = "black", face = "bold", size = 12),
+    panel.spacing = unit(2.5, "lines"), 
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_line(color = "gray85", linetype = "dashed"),
+    axis.text.y = element_text(face = "bold", size = 11, color = "black"),
+    axis.text.x = element_text(size = 10, color = "gray40"),
+    axis.title.y = element_blank(),
+    axis.title.x = element_text(face = "bold", margin = margin(t = 10)),
+    plot.title = element_text(face = "bold", size = 15, margin = margin(b = 5)),
+    plot.subtitle = element_text(color = "gray40", size = 11, margin = margin(b = 15))
+  ) +
   labs(
     title = "Ostateczne Porównanie Skuteczności Modeli",
-    subtitle = "Dokładność (Accuracy) przetestowana na odizolowanym zbiorze testowym",
-    x = "Wykorzystany Model",
-    y = "Dokładność (Accuracy)"
-  ) 
-
-
+    subtitle = "Zestawienie Dokładności oraz współczynnika Kappa na odizolowanym zbiorze testowym",
+    y = "Wynik Metryki"
+  )
 ```
 
 Ostateczne zestawienie skuteczności modeli na izolowanym zbiorze testowy, (30% danych) wskazuje na przewagę algorytmu k-Najbliższych Sąsiadów (kNN), który osiągnął najwyższą ogólną dokładność na poziomie 84.7% (współczynnik Kappa: 0,75). Pozostałe modele zaprezentowały słabszą skuteczność - Wielomianowa Regresja Logistyczna 78.0% (Kappa: 0,64), natomiast Liniowa Analiza Dyskryminacyjna 72.3% (Kappa: 0,56).
